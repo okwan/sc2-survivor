@@ -85,17 +85,29 @@ async function main() {
   const archives = [];
   for (const n of order) archives.push(await MPQ.open('/bw' + mpqs[n], 'r'));
   const got = [];
+  const looksValid = (path, d) => {
+    if (!path.endsWith('.grp')) return d.length >= 768;
+    const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
+    const n = d.length >= 6 ? v.getUint16(0, true) : 0;
+    return n > 0 && n < 2048 && v.getUint16(2, true) > 0 && v.getUint16(4, true) > 0 && 6 + n * 8 <= d.length;
+  };
   for (const path of wanted) {
     const mpqPath = path.replace(/\//g, '\\');
-    const a = archives.find((m) => m.hasFile(mpqPath));
-    if (!a) continue;
-    const f = a.openFile(mpqPath);
-    const data = f.read();
-    f.close();
-    const dest = join(outDir, 'bw', path);
-    mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, data);
-    got.push(path);
+    for (const [i, a] of archives.entries()) {
+      if (!a.hasFile(mpqPath)) continue;
+      const f = a.openFile(mpqPath);
+      const data = f.read();
+      f.close();
+      if (!looksValid(path, data)) {
+        console.warn(`fetch-bw: ${path} in ${order[i]} is not a valid file (${data.length} bytes), trying the next archive`);
+        continue;
+      }
+      const dest = join(outDir, 'bw', path);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, data);
+      got.push(path);
+      break;
+    }
   }
   for (const a of archives) a.close();
   if (!got.length) return console.warn('fetch-bw: found none of the sprite files');
