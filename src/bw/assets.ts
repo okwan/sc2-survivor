@@ -1,4 +1,5 @@
 import { Rectangle, Texture, type Sprite } from 'pixi.js';
+import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
 import { normalizePath, readZip } from './zip';
 
@@ -84,6 +85,14 @@ function wanted(path: string): string | null {
 
 /** Accepts a .zip, a folder selection (webkitdirectory) or loose files. */
 export async function ingestFiles(files: File[]): Promise<Map<string, Uint8Array>> {
+  // A StarCraft: Remastered install folder: read straight from its CASC storage
+  if (files.some((f) => /^[0-9a-f]{10}\.idx$/i.test(f.name))) {
+    const casc = await CascStorage.open(files);
+    const wantedPaths = [...new Set(Object.values(BW_UNITS)), ...PALETTES];
+    const got = await casc.readFiles(wantedPaths);
+    if (!got.size) throw new Error(`Opened the StarCraft data (${casc.root.size} files) but found none of the unit sprites.`);
+    return got;
+  }
   const out = new Map<string, Uint8Array>();
   for (const f of files) {
     const name = normalizePath((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name);

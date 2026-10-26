@@ -367,15 +367,15 @@ export function showGraphics(shell: Shell, message = '') {
     <p>${st.loaded ? `<b class="gold">Loaded ${st.count} unit sprites from your StarCraft files.</b>` : 'The game is using its built-in placeholder art.'}
     ${st.missing.length ? `<br><span class="muted">Not found: ${st.missing.join(', ')}</span>` : ''}</p>
     ${message ? `<p style="color:#ff8080">${message}</p>` : ''}
-    <p>You can play with the real StarCraft unit sprites by loading them from your own copy of the game. Nothing is uploaded: the files are read in your browser, and the ${needed.length} small files the game uses are kept in this browser's storage so you only do this once.</p>
+    <p>You can play with the real StarCraft unit sprites from your own copy of the game. Nothing is uploaded: the files are read in your browser, and the ${needed.length} small sprite files the game uses are kept in this browser's storage so you only do this once.</p>
     <ol style="line-height:1.5">
-      <li>Install <b>StarCraft: Remastered</b> from Battle.net (the free edition is enough), or use your Brood War install.</li>
-      <li>Extract the <code>unit</code> and <code>tileset</code> folders. For Remastered use <a href="http://www.zezula.net/en/casc/main.html" target="_blank" rel="noopener">CascView</a> (open the StarCraft folder and extract <code>unit</code> and <code>tileset</code>). For Brood War 1.16 use an MPQ editor on <code>StarDat.mpq</code> and <code>BrooDat.mpq</code>.</li>
-      <li>Choose that folder below, or a .zip containing it. You can also drag it onto this panel.</li>
+      <li>Install <b>StarCraft: Remastered</b> from Battle.net (the free edition is enough).</li>
+      <li>Press <b>Choose StarCraft folder</b> and pick the folder StarCraft is installed in (on Windows usually <code>C:\\Program Files (x86)\\StarCraft</code>, on Mac <code>/Applications/StarCraft</code>). Your browser will ask to confirm access to the folder.</li>
     </ol>
+    <p class="muted" style="font-size:14px">Already extracted the SD <code>unit</code> and <code>tileset</code> folders, or have a Brood War 1.16 copy? Choose that folder or a .zip of it instead.</p>
     <div class="row">
-      <label class="btn primary" style="cursor:pointer">Choose folder<input type="file" webkitdirectory multiple hidden data-dir></label>
-      <label class="btn" style="cursor:pointer">Choose .zip or files<input type="file" multiple accept=".zip,.grp,.wpe" hidden data-files></label>
+      <label class="btn primary" style="cursor:pointer">Choose StarCraft folder<input type="file" webkitdirectory multiple hidden data-dir></label>
+      <label class="btn" style="cursor:pointer">Extracted files or .zip<input type="file" multiple accept=".zip,.grp,.wpe" hidden data-files></label>
       ${st.loaded ? '<button class="btn danger" data-clear>Use placeholder art</button>' : ''}
     </div>
     <details style="margin-top:14px"><summary class="muted">Files the game looks for</summary><div class="muted" style="font-size:13px;columns:2">${needed.map((p) => `<div>${p}</div>`).join('')}<div>tileset/platform.wpe (any tileset .wpe works)</div></div></details>`;
