@@ -10,7 +10,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-const MIRRORS = [process.env.BW_ZIP_URL, 'http://files.theabyss.ru/sc/starcraft.zip'].filter(Boolean);
+// Brood War 1.16.1 archives (.zip or .7z) containing STARDAT.MPQ and BROODAT.MPQ
+const MIRRORS = [
+  process.env.BW_ZIP_URL,
+  'https://archive.org/download/scbw.-7z/SCBW.7z',
+  'http://files.theabyss.ru/sc/starcraft.zip',
+].filter(Boolean);
 
 const outDir = process.argv[2] ?? 'dist';
 const localSource = process.argv[3];
@@ -32,6 +37,12 @@ function findMpqs(dir) {
   return out;
 }
 
+// only the MPQs are needed, so skip the rest of the archive
+function extract(archive, dir) {
+  if (/\.7z$/i.test(archive)) execFileSync('7z', ['x', '-y', `-o${dir}`, archive, '-r', '*.mpq', '*.MPQ'], { stdio: 'ignore' });
+  else execFileSync('unzip', ['-q', '-o', '-C', archive, '*.mpq', '-d', dir]);
+}
+
 async function download(url, dest) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -42,18 +53,19 @@ async function getSourceDir() {
   if (localSource) {
     if (statSync(localSource).isDirectory()) return localSource;
     const dir = mkdtempSync(join(tmpdir(), 'bw-'));
-    execFileSync('unzip', ['-q', '-o', localSource, '-d', dir]);
+    extract(localSource, dir);
     return dir;
   }
   for (const url of MIRRORS) {
     const dir = mkdtempSync(join(tmpdir(), 'bw-'));
-    const zip = join(dir, 'bw.zip');
+    const archive = join(dir, /\.7z$/i.test(url) ? 'bw.7z' : 'bw.zip');
     try {
       console.log(`fetch-bw: downloading ${url}`);
-      await download(url, zip);
-      execFileSync('unzip', ['-q', '-o', zip, '-d', join(dir, 'x')]);
+      await download(url, archive);
+      extract(archive, join(dir, 'x'));
       if (Object.keys(findMpqs(join(dir, 'x'))).length) return join(dir, 'x');
-      console.warn(`fetch-bw: no StarCraft MPQs inside ${url}`);
+      const list = execFileSync(/\.7z$/i.test(url) ? '7z' : 'unzip', /\.7z$/i.test(url) ? ['l', archive] : ['-l', archive]).toString();
+      console.warn(`fetch-bw: no StarCraft MPQs inside ${url}. Contents:\n${list.split('\n').slice(0, 60).join('\n')}`);
     } catch (e) {
       console.warn(`fetch-bw: ${url} failed: ${e.message}`);
     }
