@@ -17,7 +17,14 @@ const pal = readFileSync(join(dir, manifest.files.find((f) => f.endsWith('.wpe')
 const preview = new Set(['unit/terran/marine.grp', 'unit/zerg/hydra.grp', 'unit/protoss/zealot.grp']);
 const shades = ' .:-=+*#%@';
 for (const f of manifest.files.filter((p) => p.endsWith('.grp'))) {
-  const g = parseGrp(readFileSync(join(dir, f)));
+  const buf = readFileSync(join(dir, f));
+  let g;
+  try {
+    g = parseGrp(buf);
+  } catch (e) {
+    console.log(`check-bw: ${f} FAILED (${(e as Error).message}), ${buf.length} bytes, starts ${buf.subarray(0, 16).toString('hex')}`);
+    continue;
+  }
   const frame = Math.min(8, g.frames - 1);
   const px = new Uint8ClampedArray(g.width * g.height * 4);
   drawGrpFrame(g, frame, pal, px, g.width, 0, 0);
