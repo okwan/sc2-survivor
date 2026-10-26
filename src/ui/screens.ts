@@ -364,10 +364,10 @@ export function showGraphics(shell: Shell, message = '') {
   const needed = [...new Set(Object.values(BW_UNITS))];
   box.innerHTML = `
     <h2>Brood War sprites</h2>
-    <p>${st.loaded ? `<b class="gold">Loaded ${st.count} unit sprites from your StarCraft files.</b>` : 'The game is using its built-in placeholder art.'}
+    <p>${!st.loaded ? 'The game is using its built-in placeholder art.' : st.source === 'bundled' ? `<b class="gold">Using the ${st.count} Brood War unit sprites that come with the game.</b> You don't need to do anything here.` : `<b class="gold">Loaded ${st.count} unit sprites from your StarCraft files.</b>`}
     ${st.missing.length ? `<br><span class="muted">Not found: ${st.missing.join(', ')}</span>` : ''}</p>
     ${message ? `<p style="color:#ff8080">${message}</p>` : ''}
-    <p>You can play with the real StarCraft unit sprites from your own copy of the game. Nothing is uploaded: the files are read in your browser, and the ${needed.length} small sprite files the game uses are kept in this browser's storage so you only do this once.</p>
+    <p>${st.source === 'bundled' ? 'Optionally, you can load' : 'You can play with'} the real StarCraft unit sprites from your own copy of the game. Nothing is uploaded: the files are read in your browser, and the ${needed.length} small sprite files the game uses are kept in this browser's storage so you only do this once.</p>
     <ol style="line-height:1.5">
       <li>Install <b>StarCraft: Remastered</b> from Battle.net (the free edition is enough).</li>
       <li>Press <b>Choose StarCraft folder</b> and pick the folder StarCraft is installed in (on Windows usually <code>C:\\Program Files (x86)\\StarCraft</code>, on Mac <code>/Applications/StarCraft</code>). Your browser will ask to confirm access to the folder.</li>
@@ -376,7 +376,7 @@ export function showGraphics(shell: Shell, message = '') {
     <div class="row">
       <label class="btn primary" style="cursor:pointer">Choose StarCraft folder<input type="file" webkitdirectory multiple hidden data-dir></label>
       <label class="btn" style="cursor:pointer">Extracted files or .zip<input type="file" multiple accept=".zip,.grp,.wpe" hidden data-files></label>
-      ${st.loaded ? '<button class="btn danger" data-clear>Use placeholder art</button>' : ''}
+      ${st.source === 'local' ? '<button class="btn danger" data-clear>Forget my files</button>' : ''}
     </div>
     <details style="margin-top:14px"><summary class="muted">Files the game looks for</summary><div class="muted" style="font-size:13px;columns:2">${needed.map((p) => `<div>${p}</div>`).join('')}<div>tileset/platform.wpe (any tileset .wpe works)</div></div></details>`;
   const handle = async (files: File[]) => {

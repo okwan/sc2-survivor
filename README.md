@@ -30,21 +30,27 @@ npm run build    # production build in dist/
 
 Controls: WASD / arrow keys, mouse wheel to zoom, `Esc` to pause. Touch devices get a virtual joystick.
 
-## Brood War sprites (optional)
+## Brood War sprites
 
-Like Azeroth Survivors does with the WoW client, the game can use the real unit sprites from your own
-StarCraft install. The repo ships no Blizzard files. In the game, open **Graphics** and choose a folder
-(or .zip) containing the SD `unit/` and `tileset/` folders, extracted from StarCraft: Remastered with
-[CascView](http://www.zezula.net/en/casc/main.html) or from Brood War's `StarDat.mpq`/`BrooDat.mpq`.
-The files are decoded in the browser (`src/bw/`), and the ~20 files the game uses are kept in IndexedDB.
-Without them the game uses its procedural placeholder art.
+Like Azeroth Survivors does with the WoW client, the repo ships no Blizzard files, but the deployed site
+does use the real unit sprites. The deploy workflow runs `scripts/fetch-bw.mjs`, which downloads Brood War
+1.16.1 (from the `BW_ZIP_URL` repository variable if set, otherwise a public mirror), reads `StarDat.mpq` /
+`BrooDat.mpq` with [StormJS](https://github.com/wowserhq/stormjs), and writes the ~20 sprite files the game
+uses to `dist/bw/`. The game loads them at startup. If the download fails, the build still succeeds and the
+game uses its procedural placeholder art.
+
+Players can also load sprites from their own copy under **Graphics**: pick a StarCraft: Remastered install
+folder (read directly from its CASC storage), or a folder/.zip of extracted SD `unit/` and `tileset/` files.
+Those are decoded in the browser (`src/bw/`) and kept in IndexedDB.
+
+To try it locally: `npm run build && node scripts/fetch-bw.mjs dist path/to/StarCraft && npx vite preview`.
 
 ## Tech
 
 - TypeScript + Vite + [PixiJS 8](https://pixijs.com/) (WebGL) for rendering
 - DOM overlay for HUD and menus
 - Spatial hash grid, pooled sprites and entities; the simulation stays under 1 ms per frame with 600+ enemies
-- All art is generated procedurally at startup; the repo ships no Blizzard assets
+- Placeholder art is generated procedurally at startup; the repo ships no Blizzard assets
 - Progress is saved in `localStorage`
 
 ## Layout

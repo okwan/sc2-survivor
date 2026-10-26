@@ -51,7 +51,8 @@ export interface BwSprite {
 }
 
 const registry = new Map<string, BwSprite>();
-let status: { loaded: boolean; count: number; missing: string[] } = { loaded: false, count: 0, missing: [] };
+type BwSource = 'local' | 'bundled' | null;
+let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
 export function bwStatus() {
   return status;
@@ -165,11 +166,12 @@ export async function clearStoredFiles() {
   }
   for (const s of registry.values()) for (const f of s.frames) f.destroy();
   registry.clear();
-  status = { loaded: false, count: 0, missing: [] };
+  status = { loaded: false, count: 0, missing: [], source: null };
+  await loadBundled();
 }
 
 // ------------------------------------------------------------ texture building
-export function buildSprites(files: Map<string, Uint8Array>): typeof status {
+export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 'local'): typeof status {
   const palPath = PALETTES.find((p) => files.has(p));
   if (!palPath) throw new Error('No palette found. Include the tileset folder (for example tileset/platform.wpe).');
   const base = files.get(palPath)!;
@@ -197,7 +199,7 @@ export function buildSprites(files: Map<string, Uint8Array>): typeof status {
       missing.push(path);
     }
   }
-  status = { loaded: registry.size > 0, count: registry.size, missing: [...new Set(missing)] };
+  status = { loaded: registry.size > 0, count: registry.size, missing: [...new Set(missing)], source };
   return status;
 }
 
@@ -225,12 +227,33 @@ function buildOne(buf: Uint8Array, pal: Uint8Array): BwSprite {
   return { frames, size: Math.max(8, sizeSum / n) };
 }
 
-export async function initBwFromStorage(): Promise<void> {
+/** Loads the player's own files if they picked some, otherwise the sprites the site ships in bw/ (if any). */
+export async function initBw(): Promise<void> {
   const files = await loadStoredFiles();
-  if (!files) return;
+  if (files) {
+    try {
+      if (buildSprites(files, 'local').loaded) return;
+    } catch {
+      /* stored data unusable; try the bundled sprites */
+    }
+  }
+  await loadBundled();
+}
+
+async function loadBundled() {
   try {
-    buildSprites(files);
+    const res = await fetch('bw/manifest.json');
+    if (!res.ok) return;
+    const { files: paths } = (await res.json()) as { files: string[] };
+    const got = new Map<string, Uint8Array>();
+    await Promise.all(
+      paths.map(async (p) => {
+        const r = await fetch('bw/' + p);
+        if (r.ok) got.set(p, new Uint8Array(await r.arrayBuffer()));
+      }),
+    );
+    buildSprites(got, 'bundled');
   } catch {
-    /* stored data unusable; fall back to placeholder art */
+    /* no bundled sprites (e.g. the single-file preview): placeholder art */
   }
 }

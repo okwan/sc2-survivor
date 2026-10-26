@@ -7,7 +7,7 @@ import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
 import { save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
-import { bwSprite, initBwFromStorage } from './bw/assets';
+import { bwSprite, initBw } from './bw/assets';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -25,7 +25,7 @@ async function boot() {
   });
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
-  await initBwFromStorage();
+  await initBw();
   setVolume(save.settings.volume);
 
   const input = new Input(app.canvas);

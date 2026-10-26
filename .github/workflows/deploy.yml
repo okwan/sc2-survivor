@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,10 +25,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+      # Brood War sprites are downloaded at deploy time and served with the site; the repo holds none.
+      - run: node scripts/fetch-bw.mjs dist
+        env:
+          NODE_ENV: production
+          BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
+      - run: ls -R dist/bw || echo "no bundled sprites"
+      - if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     environment:
