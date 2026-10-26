@@ -1,4 +1,5 @@
 import type { Texture } from 'pixi.js';
+import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -70,6 +71,7 @@ export function showMenu(shell: Shell) {
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
       <button class="btn" data-a="perks">Rewards <span class="gold">⬢ ${save.vespene}</span></button>
+      <button class="btn" data-a="graphics">Graphics${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
       <button class="btn" data-a="settings">Settings</button>
     </div>
     <div class="menu-actions"><button class="btn primary" data-a="play">Deploy ▸</button></div>
@@ -126,6 +128,7 @@ export function showMenu(shell: Shell) {
       else if (a === 'armory') showArmory(shell, save.lastRace);
       else if (a === 'perks') showPerks(shell);
       else if (a === 'settings') showSettingsMenu(shell);
+      else if (a === 'graphics') showGraphics(shell);
     };
   });
   shell.setKeyHandler((c) => {
@@ -347,6 +350,84 @@ export function showSettingsMenu(shell: Shell) {
   };
   row.append(reset);
   box.append(row);
+  inner.append(box);
+}
+
+// ================================================================ Brood War graphics
+export function showGraphics(shell: Shell, message = '') {
+  const inner = subScreen(shell, 'Graphics', null, null);
+  const st = bwStatus();
+  const box = document.createElement('div');
+  box.className = 'panel modal';
+  box.style.margin = '0 auto';
+  box.style.maxWidth = '720px';
+  const needed = [...new Set(Object.values(BW_UNITS))];
+  box.innerHTML = `
+    <h2>Brood War sprites</h2>
+    <p>${st.loaded ? `<b class="gold">Loaded ${st.count} unit sprites from your StarCraft files.</b>` : 'The game is using its built-in placeholder art.'}
+    ${st.missing.length ? `<br><span class="muted">Not found: ${st.missing.join(', ')}</span>` : ''}</p>
+    ${message ? `<p style="color:#ff8080">${message}</p>` : ''}
+    <p>You can play with the real StarCraft unit sprites by loading them from your own copy of the game. Nothing is uploaded: the files are read in your browser, and the ${needed.length} small files the game uses are kept in this browser's storage so you only do this once.</p>
+    <ol style="line-height:1.5">
+      <li>Install <b>StarCraft: Remastered</b> from Battle.net (the free edition is enough), or use your Brood War install.</li>
+      <li>Extract the <code>unit</code> and <code>tileset</code> folders. For Remastered use <a href="http://www.zezula.net/en/casc/main.html" target="_blank" rel="noopener">CascView</a> (open the StarCraft folder and extract <code>unit</code> and <code>tileset</code>). For Brood War 1.16 use an MPQ editor on <code>StarDat.mpq</code> and <code>BrooDat.mpq</code>.</li>
+      <li>Choose that folder below, or a .zip containing it. You can also drag it onto this panel.</li>
+    </ol>
+    <div class="row">
+      <label class="btn primary" style="cursor:pointer">Choose folder<input type="file" webkitdirectory multiple hidden data-dir></label>
+      <label class="btn" style="cursor:pointer">Choose .zip or files<input type="file" multiple accept=".zip,.grp,.wpe" hidden data-files></label>
+      ${st.loaded ? '<button class="btn danger" data-clear>Use placeholder art</button>' : ''}
+    </div>
+    <details style="margin-top:14px"><summary class="muted">Files the game looks for</summary><div class="muted" style="font-size:13px;columns:2">${needed.map((p) => `<div>${p}</div>`).join('')}<div>tileset/platform.wpe (any tileset .wpe works)</div></div></details>`;
+  const handle = async (files: File[]) => {
+    if (!files.length) return;
+    box.style.opacity = '0.6';
+    try {
+      const got = await ingestFiles(files);
+      const res = buildSprites(got);
+      if (!res.loaded) throw new Error('No unit sprites found. Make sure the unit folder is included.');
+      await storeFiles(got);
+      sfx('level');
+      showGraphics(shell);
+    } catch (e) {
+      showGraphics(shell, e instanceof Error ? e.message : String(e));
+    }
+  };
+  box.querySelector<HTMLInputElement>('[data-dir]')!.onchange = (e) => handle(Array.from((e.target as HTMLInputElement).files ?? []));
+  box.querySelector<HTMLInputElement>('[data-files]')!.onchange = (e) => handle(Array.from((e.target as HTMLInputElement).files ?? []));
+  const clr = box.querySelector<HTMLButtonElement>('[data-clear]');
+  if (clr) clr.onclick = async () => {
+    await clearStoredFiles();
+    showGraphics(shell);
+  };
+  box.ondragover = (e) => {
+    e.preventDefault();
+    box.style.borderColor = 'var(--accent)';
+  };
+  box.ondragleave = () => (box.style.borderColor = '');
+  box.ondrop = async (e) => {
+    e.preventDefault();
+    const items = Array.from(e.dataTransfer?.items ?? []);
+    const files: File[] = [];
+    const walk = async (entry: FileSystemEntry, path: string): Promise<void> => {
+      if (entry.isFile) {
+        const f = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+        files.push(new File([f], path + f.name));
+      } else if (entry.isDirectory) {
+        const reader = (entry as FileSystemDirectoryEntry).createReader();
+        let batch: FileSystemEntry[];
+        do {
+          batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+          for (const c of batch) await walk(c, path + entry.name + '/');
+        } while (batch.length);
+      }
+    };
+    for (const it of items) {
+      const entry = it.webkitGetAsEntry?.();
+      if (entry) await walk(entry, '');
+    }
+    handle(files);
+  };
   inner.append(box);
 }
 

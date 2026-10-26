@@ -30,6 +30,15 @@ npm run build    # production build in dist/
 
 Controls: WASD / arrow keys, mouse wheel to zoom, `Esc` to pause. Touch devices get a virtual joystick.
 
+## Brood War sprites (optional)
+
+Like Azeroth Survivors does with the WoW client, the game can use the real unit sprites from your own
+StarCraft install. The repo ships no Blizzard files. In the game, open **Graphics** and choose a folder
+(or .zip) containing the SD `unit/` and `tileset/` folders, extracted from StarCraft: Remastered with
+[CascView](http://www.zezula.net/en/casc/main.html) or from Brood War's `StarDat.mpq`/`BrooDat.mpq`.
+The files are decoded in the browser (`src/bw/`), and the ~20 files the game uses are kept in IndexedDB.
+Without them the game uses its procedural placeholder art.
+
 ## Tech
 
 - TypeScript + Vite + [PixiJS 8](https://pixijs.com/) (WebGL) for rendering
@@ -42,6 +51,7 @@ Controls: WASD / arrow keys, mouse wheel to zoom, `Esc` to pause. Touch devices 
 
 ```
 src/
+  bw/       optional Brood War sprite loader (zip reader, GRP decoder, IndexedDB cache)
   data/     races, spells, talents, enemies & zones, items/perks
   game/     simulation (game.ts), spell behaviours, cards, input, audio, spatial grid
   meta/     save data, talents, rewards

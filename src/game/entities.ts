@@ -1,4 +1,5 @@
 import type { Sprite } from 'pixi.js';
+import type { BwSprite } from '../bw/assets';
 import type { BossDef, EnemyDef } from '../data/enemies';
 import type { SpellDef, SpellStats } from '../data/spells';
 
@@ -47,6 +48,8 @@ export interface Enemy {
   cdx: number;
   cdy: number;
   facing: number;
+  bw: BwSprite | null;
+  bwScale: number;
 }
 
 export interface Projectile {
@@ -179,6 +182,8 @@ export interface Minion {
   ox: number;
   oy: number;
   damage: number;
+  angle: number;
+  bw: BwSprite | null;
 }
 
 export interface Telegraph {

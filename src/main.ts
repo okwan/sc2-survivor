@@ -7,6 +7,7 @@ import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
 import { save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
+import { bwSprite, initBwFromStorage } from './bw/assets';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -24,6 +25,7 @@ async function boot() {
   });
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
+  await initBwFromStorage();
   setVolume(save.settings.volume);
 
   const input = new Input(app.canvas);
@@ -55,14 +57,15 @@ async function boot() {
       keyHandler = fn;
     },
     heroPreview(race) {
-      let cv = previews.get(race);
+      const bw = bwSprite(`hero:${race}`);
+      let cv = bw ? undefined : previews.get(race);
       if (!cv) {
         try {
-          const s = new Sprite(heroTexture(race));
-          s.scale.set(2.2);
+          const s = new Sprite(bw ? bw.frames[8] : heroTexture(race));
+          s.scale.set(bw ? 64 / bw.frames[8].width * 0.9 : 2.2);
           cv = app.renderer.extract.canvas(s) as HTMLCanvasElement;
           s.destroy();
-          previews.set(race, cv);
+          if (!bw) previews.set(race, cv);
         } catch {
           return null;
         }
@@ -71,7 +74,8 @@ async function boot() {
       copy.width = cv.width;
       copy.height = cv.height;
       copy.style.width = '64px';
-      copy.style.transform = 'rotate(-90deg)';
+      if (!bw) copy.style.transform = 'rotate(-90deg)';
+      copy.style.imageRendering = bw ? 'pixelated' : '';
       copy.getContext('2d')!.drawImage(cv, 0, 0);
       return copy;
     },

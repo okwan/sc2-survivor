@@ -1,4 +1,5 @@
 import { Sprite } from 'pixi.js';
+import { bwSprite, orientBw } from '../bw/assets';
 import { fx, minionTexture } from '../render/textures';
 import { sfx } from './audio';
 import type { Enemy, SpellInstance } from './entities';
@@ -191,7 +192,9 @@ export function updatePersistent(g: Game, s: SpellInstance, dt: number) {
       const y = p.y + Math.sin(a) * (st.area + wob);
       const spr = s.orbiters[i];
       spr.position.set(x, y);
-      spr.rotation = a + Math.PI / 2;
+      const bw = bwSprite(def.id === 'scourge' ? 'minion:scourge' : 'minion:interceptor');
+      if (bw) orientBw(spr, bw, a + Math.PI / 2, 24 / bw.size);
+      else spr.rotation = a + Math.PI / 2;
       g.forEnemiesInRadius(x, y, 16, (e) => {
         if (now - e.hitStamp[s.slot] < hitCd) return;
         e.hitStamp[s.slot] = now;
@@ -250,7 +253,7 @@ export function updateMinions(g: Game, dt: number) {
         const t = g.nearestEnemy(m.x, m.y, range);
         if (t) {
           const a = Math.atan2(t.y - m.y, t.x - m.x);
-          m.sprite.rotation = a;
+          m.angle = a;
           g.spawnProjectile(m.x, m.y, a, st?.speed ?? 600, m.damage, 5, 0, 0.8, m.slot, 0xff6060, ['tech']);
           m.atk = st?.cooldown ?? 0.7;
         }
@@ -275,7 +278,7 @@ export function updateMinions(g: Game, dt: number) {
         const v = Math.min(d, speed * dt * (m.target ? 1 : d > 200 ? 1.6 : 0.8));
         m.x += (dx / d) * v;
         m.y += (dy / d) * v;
-        m.sprite.rotation = Math.atan2(dy, dx);
+        m.angle = Math.atan2(dy, dx);
       }
       if (m.target && d < m.target.radius + 10 && m.atk <= 0) {
         g.hit(m.target, m.damage, Math.max(0, m.slot), { tags: ['bio'] });

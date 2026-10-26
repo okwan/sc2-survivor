@@ -6,6 +6,7 @@ import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
+import { bwSprite, orientBw, type BwSprite } from '../bw/assets';
 import { sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
@@ -98,6 +99,8 @@ export class Game {
   };
   gfx = new Graphics();
   heroSprite!: Sprite;
+  private heroBw: BwSprite | null = null;
+  private heroAngle = 0;
   barrierSprite!: Sprite;
 
   time = 0;
@@ -267,6 +270,7 @@ export class Game {
     shadow.scale.set(0.9);
     this.layers.shadows.addChild(shadow);
     this.heroSprite = new Sprite(heroTexture(this.race.id));
+    this.heroBw = bwSprite(`hero:${this.race.id}`) ?? null;
     this.heroSprite.anchor.set(0.5);
     this.heroSprite.scale.set(1.25);
     this.layers.units.addChild(this.heroSprite);
@@ -390,7 +394,7 @@ export class Game {
       e = {
         uid: 0, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
         burnDps: 0, burnTime: 0, burnTick: 0, contactCd: 0, shotTimer: 0, elite: false, boss: null, lair: null, asleep: false,
-        hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0,
+        hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0, bw: null, bwScale: 1,
       };
     }
     e.uid = this.uid++;
@@ -434,6 +438,11 @@ export class Game {
     spr.texture = tex;
     spr.visible = true;
     spr.alpha = 1;
+    e.bw = bwSprite(shape) ?? null;
+    if (e.bw) {
+      e.bwScale = (radius * (opts.boss ? 1 : opts.scale ?? 1) * 2.5) / e.bw.size;
+      spr.texture = e.bw.frames[0];
+    }
     spr.scale.set(opts.boss ? 1 : opts.scale ?? 1);
     spr.tint = opts.elite ? 0xffe9a0 : 0xffffff;
     spr.position.set(x, y);
@@ -779,7 +788,7 @@ export class Game {
     const spr = this.sprite(this.layers.units, tex);
     spr.scale.set(kind === 'turret' ? 1.2 : 1.3);
     const a = Math.random() * Math.PI * 2;
-    const m: Minion = { x, y, slot, kind, target: null, atk: Math.random() * 0.5, life, sprite: spr, ox: Math.cos(a) * 60, oy: Math.sin(a) * 60, damage };
+    const m: Minion = { x, y, slot, kind, target: null, atk: Math.random() * 0.5, life, sprite: spr, ox: Math.cos(a) * 60, oy: Math.sin(a) * 60, damage, angle: 0, bw: bwSprite(`minion:${kind}`) ?? null };
     spr.position.set(x, y);
     this.minions.push(m);
     return m;
@@ -1403,7 +1412,8 @@ export class Game {
         spr.position.set(e.x, e.y);
         const a = Math.atan2(p.y - e.y, p.x - e.x);
         e.facing += angleLerp(e.facing, a, Math.min(1, dt * 8));
-        spr.rotation = e.facing;
+        if (e.bw) orientBw(spr, e.bw, e.facing, e.bwScale);
+        else spr.rotation = e.facing;
       }
     }
   }
@@ -1608,7 +1618,7 @@ export class Game {
       pb.y += (dy / d) * v;
       if (target && d < 14) target.pulled = true;
       pb.sprite.position.set(pb.x, pb.y);
-      pb.sprite.rotation = Math.atan2(dy, dx);
+      pb.angle = Math.atan2(dy, dx);
     }
 
     for (let i = this.pickups.length - 1; i >= 0; i--) {
@@ -1705,9 +1715,15 @@ export class Game {
     const hs = this.heroSprite;
     hs.position.set(p.x, p.y);
     const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0;
-    hs.rotation = angleLerpTo(hs.rotation, p.facing, 0.3);
+    this.heroAngle = angleLerpTo(this.heroAngle, p.facing, 0.3);
     const bob = moving && !this.paused ? 1 + Math.sin(this.time * 18) * 0.04 : 1;
-    hs.scale.set(1.25 * bob, 1.25 / bob);
+    if (this.heroBw) {
+      orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1);
+      hs.scale.y *= 1 / bob;
+    } else {
+      hs.rotation = this.heroAngle;
+      hs.scale.set(1.25 * bob, 1.25 / bob);
+    }
     hs.alpha = p.invuln > 0 || p.dashT > 0 ? 0.55 + Math.sin(this.time * 40) * 0.25 : 1;
     if (hs.tint !== 0xffffff && this.time - p.lastHit > 0.1) hs.tint = 0xffffff;
     const sh = (hs as Sprite & { shadow?: Sprite }).shadow!;
@@ -1719,6 +1735,11 @@ export class Game {
       bsp.position.set(p.x, p.y);
       bsp.scale.set(0.6 + Math.sin(this.time * 5) * 0.02);
       bsp.alpha = p.barrier > 0 ? 0.5 : 0.35;
+    }
+
+    for (const m of this.minions) {
+      if (m.bw) orientBw(m.sprite, m.bw, m.angle, (m.kind === 'turret' ? 30 : 22) / m.bw.size);
+      else m.sprite.rotation = m.angle;
     }
 
     // props culling
