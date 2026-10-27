@@ -6,9 +6,10 @@ import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
+import type { HeroDef } from '../data/heroes';
 import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
-import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
+import { currentHero, gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { glyph } from '../render/glyphs';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
 import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, walkFrame, type BwSprite } from '../bw/assets';
@@ -46,6 +47,8 @@ export interface RunResult {
   endless: boolean;
   difficulty: DifficultyDef;
   mutators: string[];
+  elites: number;
+  evolved: number;
   damage: { name: string; icon: string; dmg: number }[];
   killedBy: string;
 }
@@ -110,6 +113,7 @@ export class Game {
   hooks: GameHooks;
   zone: ZoneDef;
   race: RaceDef;
+  hero: HeroDef;
   root = new Container();
   world = new Container();
   ground!: TilingSprite;
@@ -138,6 +142,7 @@ export class Game {
 
   diff: DifficultyDef = DIFFICULTIES[save.difficulty] ?? DIFFICULTIES[0];
   mutators = new Set<string>(save.mutators);
+  elitesKilled = 0;
   private nextEvent = 105;
   private mutT = { rift: 60, lava: 30, missiles: 40 };
   private rifts: { e: Enemy; uid: number; next: number }[] = [];
@@ -242,6 +247,8 @@ export class Game {
     this.flags = tb.flags;
     this.talentMods = tb.stats;
     this.spellMods = tb.spells;
+    this.hero = currentHero(raceId);
+    for (const f of this.hero.flags ?? []) this.flags.add(f);
     this.mapGround = bwMap(zone.id);
     if (this.mapGround) {
       const m = this.mapGround.map;
@@ -282,8 +289,8 @@ export class Game {
       this.pendingLevels += zi * 3;
     }
     // a capstone's spell comes on top of the race's own starter, never instead of it
-    this.learnSpell(this.race.startSpell, 0);
-    if (tb.startSpell && tb.startSpell !== this.race.startSpell) this.learnSpell(tb.startSpell, 0);
+    this.learnSpell(this.hero.startSpell, 0);
+    if (tb.startSpell && tb.startSpell !== this.hero.startSpell) this.learnSpell(tb.startSpell, 0);
     this.zoom = save.settings.zoom * (Math.min(window.innerWidth, window.innerHeight) < 600 ? 0.75 : 1);
   }
 
@@ -410,7 +417,7 @@ export class Game {
     shadow.scale.set(0.9);
     this.layers.shadows.addChild(shadow);
     this.heroSprite = new Sprite(heroTexture(this.race.id));
-    this.heroBw = bwSprite(`hero:${this.race.id}`) ?? null;
+    this.heroBw = bwSprite(this.hero.sprite) ?? bwSprite(`hero:${this.race.id}`) ?? null;
     this.heroSprite.anchor.set(0.5);
     this.heroSprite.scale.set(1.25);
     this.layers.units.addChild(this.heroSprite);
@@ -456,6 +463,7 @@ export class Game {
     const s = baseStats();
     const mods: StatMods = {};
     addMods(mods, this.race.stats);
+    addMods(mods, this.hero.stats);
     addMods(mods, this.talentMods);
     addMods(mods, gearStats(this.race.id));
     addMods(mods, perkStats());
@@ -856,7 +864,10 @@ export class Game {
     } else if (e.elite) {
       this.dropPickup('medkit', e.x - 10, e.y, 0);
     }
-    if (e.elite && !e.boss) this.slowmo = Math.max(this.slowmo, 0.18);
+    if (e.elite && !e.boss) {
+      this.slowmo = Math.max(this.slowmo, 0.18);
+      this.elitesKilled++;
+    }
     if (e.boss) {
       this.bossesKilled++;
       sfx('explode');
@@ -1042,6 +1053,8 @@ export class Game {
       endless: this.endless,
       difficulty: this.diff,
       mutators: [...this.mutators],
+      elites: this.elitesKilled,
+      evolved: this.spells.filter((s) => s.evo).length,
       killedBy: won ? '' : this.lastHitBy,
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),

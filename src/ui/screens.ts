@@ -1,19 +1,21 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
+import { ACHIEVEMENTS, ACH_BY_ID } from '../data/achievements';
 import { DIFFICULTIES } from '../data/difficulty';
+import { HEROES } from '../data/heroes';
 import { MAX_MUTATORS, MUTATORS } from '../data/mutators';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
-import { MAX_RANK } from '../data/spells';
+import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
 import { setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
 import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
-import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
+import { canLearn, currentHero, equip, heroUnlocked, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
 
 export interface Shell {
@@ -68,6 +70,7 @@ export function showMenu(shell: Shell) {
     <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">A StarCraft fan-made survivors game</div></div>
     <div class="section-title">Choose your race</div>
     <div class="races"></div>
+    <div class="heroes"></div>
     <div class="section-title">Choose your battlefield</div>
     <div class="zones"></div>
     <div class="diffs"></div>
@@ -75,6 +78,7 @@ export function showMenu(shell: Shell) {
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
+      <button class="btn" data-a="achievements">Achievements <span class="gold">${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length}</span></button>
       <button class="btn" data-a="perks">Rewards <span class="gold">⬢ ${save.vespene}</span></button>
       <button class="btn" data-a="graphics">Sprites${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
       <button class="btn" data-a="settings">Settings</button>
@@ -96,7 +100,7 @@ export function showMenu(shell: Shell) {
     b.className = 'race-card' + (r === race ? ' sel' : '');
     b.style.setProperty('--race', hex(d.color === 0x8a3fb0 ? 0xc06ae0 : d.color === 0x3f7fd6 ? 0x5ca0ff : d.color));
     const pts = pointsEarned(r) - pointsSpent(r);
-    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p><p class="racial">${d.active}</p>`;
+    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${r === race ? currentHero(r).name : d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p><p class="racial">${d.active}</p>`;
     const cv = shell.heroPreview(r);
     if (cv) b.querySelector('h2')!.before(cv);
     b.onclick = () => {
@@ -110,6 +114,26 @@ export function showMenu(shell: Shell) {
       showMenu(shell);
     };
     racesEl.append(b);
+  }
+
+  // heroes of the selected race; the others unlock through achievements
+  const heroesEl = inner.querySelector('.heroes')!;
+  const cur = currentHero(race);
+  for (const h of HEROES.filter((x) => x.race === race)) {
+    const open = heroUnlocked(h);
+    const b = document.createElement('button');
+    b.className = 'hero-pick' + (h.id === cur.id ? ' sel' : '') + (open ? '' : ' locked');
+    const how = h.unlock ? ACH_BY_ID[h.unlock] : undefined;
+    const sp = SPELL_BY_ID[h.startSpell];
+    b.innerHTML = `<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
+    b.onclick = () => {
+      if (!open) return;
+      save.heroes[race] = h.id;
+      persist();
+      sfx('select');
+      showMenu(shell);
+    };
+    heroesEl.append(b);
   }
 
   const zonesEl = inner.querySelector('.zones')!;
@@ -184,6 +208,7 @@ export function showMenu(shell: Shell) {
       else if (a === 'talents') showTalents(shell, save.lastRace);
       else if (a === 'armory') showArmory(shell, save.lastRace);
       else if (a === 'perks') showPerks(shell);
+      else if (a === 'achievements') showAchievements(shell);
       else if (a === 'settings') showSettingsMenu(shell);
       else if (a === 'graphics') showGraphics(shell);
     };
@@ -832,6 +857,26 @@ export function showVictory(shell: Shell, g: Game, onContinue: () => void) {
   shell.setKeyHandler(null);
 }
 
+export function showAchievements(shell: Shell) {
+  const inner = subScreen(shell, 'Achievements', null, null);
+  const got = Object.keys(save.achievements).length;
+  const head = document.createElement('div');
+  head.className = 'muted';
+  head.style.margin = '0 0 10px';
+  head.textContent = `${got} of ${ACHIEVEMENTS.length} earned. Achievements award vespene, and some unlock new heroes.`;
+  const list = document.createElement('div');
+  list.className = 'achievements';
+  for (const a of ACHIEVEMENTS) {
+    const at = save.achievements[a.id];
+    const hero = HEROES.find((h) => h.unlock === a.id);
+    const el = document.createElement('div');
+    el.className = 'ach' + (at ? ' got' : '');
+    el.innerHTML = `<div class="ach-icon">${a.icon}</div><div><b>${a.name}</b><p>${a.desc}</p><span class="gold">⬢ ${a.vespene}</span>${hero ? ` · <span class="accent">Unlocks ${hero.name}</span>` : ''}${at ? ` · <span class="muted">${new Date(at).toLocaleDateString()}</span>` : ''}</div>`;
+    list.append(el);
+  }
+  inner.append(head, list);
+}
+
 export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const o = overlay(shell);
   const box = document.createElement('div');
@@ -848,7 +893,11 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
     <div class="section-title" style="margin:14px 0 4px">Talent experience</div>
     <table>${rw.lines.map(([k, v]) => `<tr><td>${k}</td><td>+${v}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>+${rw.total}</td></tr></table>
     <div style="margin-top:8px">${rw.pointsAfter > rw.pointsBefore ? `<b class="gold">+${rw.pointsAfter - rw.pointsBefore} talent point${rw.pointsAfter - rw.pointsBefore > 1 ? 's' : ''}!</b> ` : ''}<span class="muted">Next point ${Math.floor(have)}/${need}</span> · <span class="gold">⬢ +${rw.vespene} vespene</span></div>
-    ${rw.unlocked ? `<div class="gold" style="margin-top:8px">New zone unlocked: ${rw.unlocked}</div>` : ''}`;
+    ${rw.unlocked ? `<div class="gold" style="margin-top:8px">New zone unlocked: ${rw.unlocked}</div>` : ''}
+    ${rw.achievements.map((a) => {
+      const hero = HEROES.find((h) => h.unlock === a.id);
+      return `<div class="ach-new">${a.icon} Achievement: <b>${a.name}</b> <span class="gold">⬢ +${a.vespene}</span>${hero ? ` · <b class="accent">${hero.name} unlocked!</b>` : ''}</div>`;
+    }).join('')}`;
   const row = document.createElement('div');
   row.className = 'row';
   const again = document.createElement('button');
