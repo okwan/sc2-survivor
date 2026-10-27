@@ -40,8 +40,8 @@ function findMpqs(dir) {
 
 // only the MPQs are needed, so skip the rest of the archive
 function extract(archive, dir) {
-  if (/\.7z$/i.test(archive)) execFileSync('7z', ['x', '-y', `-o${dir}`, archive, '-r', '*.mpq', '*.MPQ'], { stdio: 'ignore' });
-  else execFileSync('unzip', ['-q', '-o', '-C', archive, '*.mpq', '-d', dir]);
+  if (/\.7z$/i.test(archive)) execFileSync('7z', ['x', '-y', `-o${dir}`, archive, '-r', '*.mpq', '*.MPQ', '*.scm', '*.scx', '*.SCM', '*.SCX'], { stdio: 'ignore' });
+  else execFileSync('unzip', ['-q', '-o', '-C', archive, '*.mpq', '*.scm', '*.scx', '-d', dir]);
 }
 
 async function download(url, dest) {
@@ -75,7 +75,17 @@ async function getSourceDir() {
 }
 
 // Debug aid (BW_INVENTORY=1): lists the image and sound tables and probes candidate UI/terrain files.
-function inventory(archives, order) {
+function inventory(archives, order, src) {
+  const maps = [];
+  const walk = (d) => {
+    for (const name of readdirSync(d)) {
+      const p = join(d, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.sc[mx]$/i.test(name)) maps.push(`${p.slice(src.length + 1)} ${statSync(p).size}`);
+    }
+  };
+  walk(src);
+  console.log('inventory: maps ' + maps.length + '\n' + maps.join('\n'));
   const read = (p) => {
     for (const a of archives) {
       if (!a.hasFile(p)) continue;
@@ -114,6 +124,17 @@ function inventory(archives, order) {
     'rez\\stat_txt.tbl', 'arr\\images.dat', 'arr\\sprites.dat', 'game\\tunit.pcx', 'unit\\neutral\\min01.grp', 'unit\\neutral\\geyser.grp',
     'music\\terran1.wav', 'music\\zerg1.wav', 'music\\protoss1.wav', 'music\\title.wav', 'sound\\terran\\marine\\tmafir00.wav',
   ];
+  const camp = [];
+  for (const [dir, races] of [['campaign', ['terran', 'zerg', 'protoss']], ['campaign\\expcamp', ['protoss', 'terran', 'zerg']]]) {
+    for (const r of races) for (let i = 1; i <= 10; i++) {
+      for (const tail of ['\\staredit\\scenario.chk', '']) {
+        const c = `${dir}\\${r}\\${r}${String(i).padStart(2, '0')}${tail}`;
+        const d = read(c);
+        if (d) camp.push(`${c} ${d.length}`);
+      }
+    }
+  }
+  console.log('inventory: campaign ' + camp.join(' | '));
   for (const c of cands) {
     const d = read(c);
     console.log(`inventory: ${c} ${d ? d.length : 'MISSING'}`);
@@ -177,7 +198,7 @@ async function main() {
       break;
     }
   }
-  if (process.env.BW_INVENTORY) inventory(archives, order);
+  if (process.env.BW_INVENTORY) inventory(archives, order, src);
   for (const a of archives) a.close();
   if (!got.length) return console.warn('fetch-bw: found none of the sprite files');
   writeFileSync(join(outDir, 'bw', 'manifest.json'), JSON.stringify({ files: got }));
