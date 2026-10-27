@@ -1,6 +1,6 @@
 import { CONSOLE_H, consoleUrl, hasBwConsole, iconUrl, spellIcon, wireframeUrl, type BwTint } from '../bw/ui';
 import { PAUSE_ICON, RACE_UI, SPELL_ICONS } from '../bw/ui-files';
-import type { Game } from '../game/game';
+import { VICTORY_SECS, type Game } from '../game/game';
 import { Radar } from './radar';
 import { hasWowHud, WowHud } from './wowhud';
 import { hasWow } from '../wow/ui';
@@ -55,7 +55,8 @@ export class Hud {
   private dashEl = el('div', 'dash');
   private dashCd = el('div', 'cd');
   private last: Record<string, string | number> = {};
-  private bossBars = new Map<number, { root: HTMLDivElement; fill: HTMLElement }>();
+  private bossBars = new Map<number, { root: HTMLDivElement; fill: HTMLElement; cast: HTMLElement; castFill: HTMLElement; castName: string }>();
+  private raidEl = el('div', 'raid-warnings');
   private spellCds: HTMLElement[] = [];
   private statsEls: { kills: HTMLElement; minerals: HTMLElement; fps: HTMLElement | null } | null = null;
   pauseBtn = el('button', 'pausebtn', '❚❚');
@@ -80,7 +81,7 @@ export class Hud {
     this.shBar.append(this.shFill);
     vit.append(this.shBar, hp);
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
-    this.root.append(this.arrowsEl, xp, this.timer, this.objEl, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
+    this.root.append(this.arrowsEl, xp, this.timer, this.objEl, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.raidEl, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
     if (!touch && hasWow() && hasWowHud()) {
       this.wow = new WowHud(game, () => this.pauseBtn.click());
@@ -116,7 +117,8 @@ export class Hud {
     this.set('lvl', p.level, () => (this.lvl.textContent = `Level ${p.level}`));
     const sec = Math.floor(g.time);
     this.set('time', sec + (g.endless ? 100000 : 0), () => {
-      const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;
+      const nb = g.nextBossAt;
+      const sub = `${g.endless ? 'ENDLESS' : g.zone.name.toUpperCase()} · ${nb !== null ? `NEXT BOSS ${fmtTime(Math.max(0, nb - g.time))}` : `VICTORY ${fmtTime(Math.max(0, VICTORY_SECS - g.time))}`}`;
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
     });
     const obj = g.objectiveText();
@@ -185,6 +187,7 @@ export class Hud {
       this.toast(this.touch ? t.touch ?? t.text : t.text, '#ffe9a8');
       if (this.tipStep === TIPS.length) tipsSeen(true);
     }
+    this.drainRaidWarnings();
     // bosses
     const seen = new Set<number>();
     for (const b of g.bosses) {
@@ -196,12 +199,23 @@ export class Hud {
         const bb = el('div', 'b');
         const fill = el('i');
         bb.append(fill);
-        root.append(bb);
+        const cast = el('div', 'cast');
+        const castFill = el('i');
+        cast.append(castFill, el('span'));
+        root.append(bb, cast);
         this.bossWrap.append(root);
-        bar = { root, fill };
+        bar = { root, fill, cast, castFill, castName: '' };
         this.bossBars.set(b.uid, bar);
       }
       bar.fill.style.transform = `scaleX(${Math.max(0, b.hp / b.maxHp)})`;
+      // the cast bar under the boss's health, like a raid boss channelling a spell
+      const bs = b.boss!;
+      if (bs.cast !== bar.castName) {
+        bar.castName = bs.cast;
+        bar.cast.classList.toggle('on', !!bs.cast);
+        bar.cast.lastElementChild!.textContent = bs.cast;
+      }
+      if (bs.cast) bar.castFill.style.transform = `scaleX(${1 - Math.max(0, bs.castT) / (bs.castMax || 1)})`;
       bar.root.classList.toggle('enraged', !!b.boss?.enraged);
     }
     for (const [uid, bar] of this.bossBars) {
@@ -241,6 +255,18 @@ export class Hud {
       n++;
     }
     for (let i = n; i < this.arrows.length; i++) if (this.arrows[i].style.display !== 'none') this.arrows[i].style.display = 'none';
+  }
+
+  /** Big red raid-warning lines (boss mechanics), WoW style. */
+  private drainRaidWarnings() {
+    const q = this.game.raidWarnings;
+    while (q.length) {
+      const t = el('div', 'raid-warning');
+      t.textContent = q.shift()!;
+      this.raidEl.append(t);
+      while (this.raidEl.children.length > 3) this.raidEl.firstChild!.remove();
+      setTimeout(() => t.remove(), 4000);
+    }
   }
 
   toast(msg: string, color = '#dfe8f2') {

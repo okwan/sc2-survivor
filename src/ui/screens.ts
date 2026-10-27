@@ -9,6 +9,7 @@ import { MAX_MUTATORS, MUTATORS, MUTATOR_BY_ID } from '../data/mutators';
 import { ZONES, ZONE_BY_ID } from '../data/enemies';
 import { GEAR_SLOTS, LEGENDARY_EFFECTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
+import { wc3HeroIconUrl } from '../wc3/sprites';
 import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
@@ -23,7 +24,7 @@ export interface Shell {
   ui: HTMLElement;
   startRun(race: RaceId, zoneId: string, daily?: DailyDef): void | Promise<void>;
   quitRun(): void;
-  heroPreview(race: RaceId): HTMLCanvasElement | null;
+  heroPreview(race: RaceId): HTMLElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;
   texture?: Texture;
 }
@@ -69,8 +70,8 @@ export function showMenu(shell: Shell) {
   const inner = document.createElement('div');
   inner.className = 'menu-inner';
   inner.innerHTML = `
-    <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">A StarCraft fan-made survivors game</div></div>
-    <div class="section-title">Choose your race</div>
+    <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">Azeroth's heroes against the Koprulu sector</div></div>
+    <div class="section-title">Choose your faction</div>
     <div class="races"></div>
     <div class="heroes"></div>
     <div class="section-title">Choose your battlefield</div>
@@ -93,7 +94,7 @@ export function showMenu(shell: Shell) {
         ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
         : 'Right-click or WASD to move · spells cast automatically · F / Space to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
     }</div>
-    <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
+    <div class="footer">Each faction unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft and Warcraft are trademarks of Blizzard Entertainment.</div>`;
   menu.append(inner);
   shell.ui.append(menu);
 
@@ -129,7 +130,8 @@ export function showMenu(shell: Shell) {
     b.className = 'hero-pick' + (h.id === cur.id ? ' sel' : '') + (open ? '' : ' locked');
     const how = h.unlock ? ACH_BY_ID[h.unlock] : undefined;
     const sp = SPELL_BY_ID[h.startSpell];
-    b.innerHTML = `<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
+    const icon = wc3HeroIconUrl(h.art);
+    b.innerHTML = `${icon ? `<img class="wc3-icon" src="${icon}" alt="">` : ''}<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
     b.onclick = () => {
       if (!open) return;
       save.heroes[race] = h.id;
@@ -147,7 +149,7 @@ export function showMenu(shell: Shell) {
     b.className = 'zone' + (z.id === save.lastZone && !locked ? ' sel' : '') + (locked ? ' locked' : '');
     const best = rs.bestTimes[z.id];
     const cleared = i < rs.zonesCleared;
-    b.innerHTML = `<h3>${locked ? '🔒 ' : cleared ? '✔ ' : ''}${z.name}</h3><div class="meta">Final boss at ${z.minutes}:00 · Threat ${'★'.repeat(i + 1)}${best ? ` · Best ${fmtTime(best)}` : ''}</div><p>${locked ? `Clear ${ZONES[i - 1].name} with the ${RACE_DEFS[race].name} to unlock.` : z.desc}</p>`;
+    b.innerHTML = `<h3>${locked ? '🔒 ' : cleared ? '✔ ' : ''}${z.name}</h3><div class="meta">Final boss at ${fmtTime(z.minutes * 60)} · Threat ${'★'.repeat(i + 1)}${best ? ` · Best ${fmtTime(best)}` : ''}</div><p>${locked ? `Clear ${ZONES[i - 1].name} with the ${RACE_DEFS[race].name} to unlock.` : z.desc}</p>`;
     b.onclick = () => {
       if (locked) return;
       save.lastZone = z.id;
@@ -360,7 +362,7 @@ export function showArmory(shell: Shell, race: RaceId) {
   }
   const st = document.createElement('div');
   st.innerHTML = `<div class="section-title" style="margin-top:0">Stash (${rs.stash.length}/${STASH_MAX})</div>`;
-  if (!rs.stash.length) st.innerHTML += '<div class="muted">Kill guardians in their lairs, slay bosses and open supply caches to find gear. Gear is kept per race.</div>';
+  if (!rs.stash.length) st.innerHTML += '<div class="muted">Kill guardians in their lairs, slay bosses and open supply caches to find gear. Gear is kept per faction.</div>';
   for (const it of rs.stash) {
     const d = document.createElement('div');
     d.className = 'item';
@@ -829,7 +831,7 @@ export function showVictory(shell: Shell, g: Game, onContinue: () => void) {
   const box = document.createElement('div');
   box.className = 'panel modal';
   box.style.textAlign = 'center';
-  box.innerHTML = `<h2 class="gold">${g.zone.name} cleared!</h2><p>${g.zone.final.name} has fallen. Extract now with your rewards, or stay for endless mode where bosses return every two minutes.</p>`;
+  box.innerHTML = `<h2 class="gold">${g.zone.name} cleared!</h2><p>${g.bosses.some((b) => b.boss?.final) ? 'You held out until the bell.' : `${g.zone.final.name} has fallen.`} Extract now with your rewards, or stay for endless mode where bosses return every 2:15.</p>`;
   const row = document.createElement('div');
   row.className = 'row';
   const ex = document.createElement('button');

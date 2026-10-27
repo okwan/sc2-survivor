@@ -1,4 +1,24 @@
-export type EnemyShape = 'ling' | 'hydra' | 'roach' | 'bane' | 'muta' | 'ultra' | 'zealot' | 'stalker' | 'archon' | 'marine' | 'firebat' | 'tank' | 'hybrid' | 'broodling';
+export type EnemyShape =
+  | 'ling' | 'hydra' | 'roach' | 'bane' | 'muta' | 'ultra' | 'zealot' | 'stalker' | 'archon' | 'marine' | 'firebat' | 'tank' | 'hybrid' | 'broodling'
+  | 'drone' | 'scourge' | 'queen' | 'guardian' | 'defiler'
+  | 'scv' | 'medic' | 'vulture' | 'goliath' | 'ghost' | 'wraith' | 'bc'
+  | 'probe' | 'dtemplar' | 'htemplar' | 'reaver' | 'corsair' | 'scout' | 'carrier' | 'arbiter';
+
+/** Each shape's race (death effects) and the placeholder drawing used when its sprite is missing. */
+export const SHAPE_INFO: Record<EnemyShape, { race: 'zerg' | 'terran' | 'protoss'; drawAs: EnemyShape }> = {
+  ling: { race: 'zerg', drawAs: 'ling' }, broodling: { race: 'zerg', drawAs: 'broodling' }, hydra: { race: 'zerg', drawAs: 'hydra' },
+  roach: { race: 'zerg', drawAs: 'roach' }, bane: { race: 'zerg', drawAs: 'bane' }, muta: { race: 'zerg', drawAs: 'muta' },
+  ultra: { race: 'zerg', drawAs: 'ultra' }, drone: { race: 'zerg', drawAs: 'ling' }, scourge: { race: 'zerg', drawAs: 'bane' },
+  queen: { race: 'zerg', drawAs: 'muta' }, guardian: { race: 'zerg', drawAs: 'muta' }, defiler: { race: 'zerg', drawAs: 'roach' },
+  marine: { race: 'terran', drawAs: 'marine' }, firebat: { race: 'terran', drawAs: 'firebat' }, tank: { race: 'terran', drawAs: 'tank' },
+  scv: { race: 'terran', drawAs: 'marine' }, medic: { race: 'terran', drawAs: 'marine' }, vulture: { race: 'terran', drawAs: 'tank' },
+  goliath: { race: 'terran', drawAs: 'tank' }, ghost: { race: 'terran', drawAs: 'marine' }, wraith: { race: 'terran', drawAs: 'muta' },
+  bc: { race: 'terran', drawAs: 'tank' },
+  zealot: { race: 'protoss', drawAs: 'zealot' }, stalker: { race: 'protoss', drawAs: 'stalker' }, archon: { race: 'protoss', drawAs: 'archon' },
+  hybrid: { race: 'protoss', drawAs: 'hybrid' }, probe: { race: 'protoss', drawAs: 'stalker' }, dtemplar: { race: 'protoss', drawAs: 'zealot' },
+  htemplar: { race: 'protoss', drawAs: 'zealot' }, reaver: { race: 'protoss', drawAs: 'stalker' }, corsair: { race: 'protoss', drawAs: 'muta' },
+  scout: { race: 'protoss', drawAs: 'muta' }, carrier: { race: 'protoss', drawAs: 'archon' }, arbiter: { race: 'protoss', drawAs: 'archon' },
+};
 export type EnemyBehavior = 'chase' | 'ranged' | 'exploder' | 'charger';
 
 export interface EnemyDef {
@@ -33,11 +53,38 @@ export const ENEMIES: Record<string, EnemyDef> = {
   firebat: { id: 'firebat', name: 'Firebat', shape: 'firebat', color: 0xd06020, hp: 44, speed: 100, damage: 13, radius: 16, xp: 3, behavior: 'chase', mass: 1.5 },
   siegetank: { id: 'siegetank', name: 'Siege Tank', shape: 'tank', color: 0x707a60, hp: 320, speed: 55, damage: 25, radius: 30, xp: 15, behavior: 'ranged', range: 380, shotCd: 3.4, shotSpeed: 280, mass: 8 },
   hybrid: { id: 'hybrid', name: 'Hybrid Reaver', shape: 'hybrid', color: 0x40ffd0, hp: 380, speed: 85, damage: 22, radius: 34, xp: 20, behavior: 'charger', mass: 7 },
+  // the rest of the StarCraft roster: every run mixes all three races, ground and air
+  drone: { id: 'drone', name: 'Drone', shape: 'drone', color: 0x9a6a3a, hp: 10, speed: 125, damage: 4, radius: 12, xp: 1, behavior: 'chase' },
+  scourge: { id: 'scourge', name: 'Scourge', shape: 'scourge', color: 0xc08040, hp: 10, speed: 185, damage: 12, radius: 10, xp: 1, behavior: 'exploder' },
+  queen: { id: 'queen', name: 'Queen', shape: 'queen', color: 0xa050a0, hp: 60, speed: 110, damage: 12, radius: 17, xp: 4, behavior: 'ranged', range: 300, shotCd: 2.6, shotSpeed: 280 },
+  guardian: { id: 'guardian', name: 'Guardian', shape: 'guardian', color: 0x7a8a40, hp: 160, speed: 70, damage: 18, radius: 26, xp: 12, behavior: 'ranged', range: 380, shotCd: 3.4, shotSpeed: 250, mass: 4 },
+  defiler: { id: 'defiler', name: 'Defiler', shape: 'defiler', color: 0x6a7a3a, hp: 90, speed: 85, damage: 12, radius: 16, xp: 6, behavior: 'ranged', range: 280, shotCd: 3, shotSpeed: 220 },
+  scv: { id: 'scv', name: 'SCV', shape: 'scv', color: 0x8a8a90, hp: 12, speed: 110, damage: 5, radius: 12, xp: 1, behavior: 'chase' },
+  medic: { id: 'medic', name: 'Medic', shape: 'medic', color: 0xe0e0e0, hp: 24, speed: 100, damage: 5, radius: 13, xp: 2, behavior: 'chase' },
+  vulture: { id: 'vulture', name: 'Vulture', shape: 'vulture', color: 0xb08040, hp: 30, speed: 175, damage: 9, radius: 16, xp: 2, behavior: 'chase' },
+  goliath: { id: 'goliath', name: 'Goliath', shape: 'goliath', color: 0x8a8a70, hp: 70, speed: 80, damage: 10, radius: 18, xp: 4, behavior: 'ranged', range: 300, shotCd: 2, shotSpeed: 360, mass: 2 },
+  ghost: { id: 'ghost', name: 'Ghost', shape: 'ghost', color: 0xc0c0d0, hp: 40, speed: 95, damage: 14, radius: 13, xp: 4, behavior: 'ranged', range: 360, shotCd: 2.8, shotSpeed: 440 },
+  wraith: { id: 'wraith', name: 'Wraith', shape: 'wraith', color: 0x7090b0, hp: 40, speed: 130, damage: 9, radius: 16, xp: 3, behavior: 'ranged', range: 280, shotCd: 2, shotSpeed: 380 },
+  battlecruiser: { id: 'battlecruiser', name: 'Battlecruiser', shape: 'bc', color: 0x8090a0, hp: 600, speed: 55, damage: 30, radius: 36, xp: 30, behavior: 'ranged', range: 360, shotCd: 2.6, shotSpeed: 300, mass: 10 },
+  probe: { id: 'probe', name: 'Probe', shape: 'probe', color: 0xd0c060, hp: 11, speed: 120, damage: 4, radius: 11, xp: 1, behavior: 'chase' },
+  darktemplar: { id: 'darktemplar', name: 'Dark Templar', shape: 'dtemplar', color: 0x404060, hp: 80, speed: 120, damage: 18, radius: 15, xp: 5, behavior: 'chase' },
+  hightemplar: { id: 'hightemplar', name: 'High Templar', shape: 'htemplar', color: 0xd0b070, hp: 45, speed: 80, damage: 16, radius: 14, xp: 5, behavior: 'ranged', range: 300, shotCd: 3, shotSpeed: 240 },
+  reaver: { id: 'reaver', name: 'Reaver', shape: 'reaver', color: 0xb09060, hp: 260, speed: 45, damage: 30, radius: 26, xp: 14, behavior: 'ranged', range: 340, shotCd: 4, shotSpeed: 200, mass: 8 },
+  corsair: { id: 'corsair', name: 'Corsair', shape: 'corsair', color: 0x60a0e0, hp: 50, speed: 150, damage: 8, radius: 15, xp: 3, behavior: 'chase' },
+  scout: { id: 'scout', name: 'Scout', shape: 'scout', color: 0xc0a050, hp: 90, speed: 120, damage: 12, radius: 20, xp: 6, behavior: 'ranged', range: 300, shotCd: 2.2, shotSpeed: 360 },
+  carrier: { id: 'carrier', name: 'Carrier', shape: 'carrier', color: 0xd0b060, hp: 520, speed: 55, damage: 14, radius: 36, xp: 30, behavior: 'ranged', range: 360, shotCd: 1.2, shotSpeed: 340, mass: 10 },
+  arbiter: { id: 'arbiter', name: 'Arbiter', shape: 'arbiter', color: 0xc0a040, hp: 220, speed: 85, damage: 16, radius: 24, xp: 15, behavior: 'ranged', range: 320, shotCd: 2.4, shotSpeed: 300, mass: 5 },
   hybridling: { id: 'hybridling', name: 'Void Shard', shape: 'hybrid', color: 0x2ad4b0, hp: 30, speed: 125, damage: 8, radius: 13, xp: 2, behavior: 'chase' },
 };
 
 /** pods: drop pods land around you and unload; cross: beams sweep out from the boss; voidzones: void eruptions around you. */
 export type BossAbility = 'burst' | 'charge' | 'summon' | 'slam' | 'barrage' | 'pods' | 'cross' | 'voidzones';
+/**
+ * Raid mechanics every boss gets as the fight goes on (WoW-style, announced with a raid warning):
+ * soak: stand in the falling circle or everyone gets hit; mark: a bomb follows you, drag it onto the
+ * swarm; nova: get out of range before the channel ends; safezone: hide in a green circle.
+ */
+export type BossMechanic = 'soak' | 'mark' | 'nova' | 'safezone';
 
 export interface BossDef {
   id: string;
@@ -60,20 +107,20 @@ export interface ZoneDef {
   name: string;
   desc: string;
   tier: number; // difficulty multiplier
-  minutes: number; // final boss arrives at this time
+  minutes: number; // final boss arrives at this time (13:30, the sixth boss on the 2:15 clock)
   ground: [number, number]; // ground colors
   doodad: number;
   /** Enemy pools by minute. Later entries take over when minute >= from. */
   waves: { from: number; pool: [string, number][] }[];
   elite: string;
   guardian: string;
-  bosses: BossDef[]; // spawned at 3, 6, 9, 12 minutes
+  bosses: BossDef[]; // spawned at 2:15, 4:30, 6:45 and 9:00; the last two return together at 11:15
   final: BossDef;
 }
 
 export const ZONES: ZoneDef[] = [
   {
-    id: 'marsara', name: 'Mar Sara', desc: 'A dusty frontier colony overrun by the first wave of the Swarm.', tier: 1, minutes: 16,
+    id: 'marsara', name: 'Mar Sara', desc: 'A dusty frontier colony overrun by the first wave of the Swarm.', tier: 1, minutes: 13.5,
     ground: [0x5a4632, 0x4e3c2a], doodad: 0x8a6a4a,
     waves: [
       { from: 0, pool: [['zergling', 10]] },
@@ -93,7 +140,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'bf', name: 'Cerebrate Zasz', title: 'Overmind\'s Voice', shape: 'ultra', color: 0x9a2ad0, hp: 16000, speed: 75, damage: 34, radius: 64, abilities: ['burst', 'summon', 'slam', 'barrage', 'pods'], summon: 'hydralisk', split: ['ultralisk', 2] },
   },
   {
-    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 16,
+    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 13.5,
     ground: [0x3a2420, 0x2c1a18], doodad: 0xff5a20,
     waves: [
       { from: 0, pool: [['zergling', 8], ['broodling', 4]] },
@@ -112,7 +159,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'cf', name: 'Queen of Blades', title: 'Sovereign of the Swarm', shape: 'hydra', color: 0xc040ff, hp: 24000, speed: 110, damage: 38, radius: 54, abilities: ['charge', 'burst', 'summon', 'cross', 'voidzones'], summon: 'mutalisk' },
   },
   {
-    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 18,
+    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 13.5,
     ground: [0x2e4a2c, 0x243e22], doodad: 0x4fd2ff,
     waves: [
       // the Swarm is on Aiur too: lighter zerglings open the zone before the zealots take over
@@ -132,7 +179,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'af', name: 'Ulrezaj', title: 'Archon of Shadows', shape: 'archon', color: 0x5020c0, hp: 34000, speed: 85, damage: 44, radius: 66, abilities: ['burst', 'barrage', 'summon', 'voidzones'], summon: 'zealot', split: ['archon', 3] },
   },
   {
-    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 18,
+    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 13.5,
     ground: [0x3a3e44, 0x30343a], doodad: 0xd04040,
     waves: [
       { from: 0, pool: [['marine', 6], ['zergling', 4]] },
@@ -151,7 +198,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'kf', name: 'Emperor Mengsk', title: 'Dominion Warlord', shape: 'marine', color: 0xc02020, hp: 46000, speed: 95, damage: 48, radius: 56, abilities: ['barrage', 'pods', 'charge', 'cross', 'slam'], summon: 'marine' },
   },
   {
-    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 20,
+    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 13.5,
     ground: [0x1e1c2e, 0x181626], doodad: 0x9a4aff,
     waves: [
       { from: 0, pool: [['hybridling', 4], ['zergling', 8]] },
@@ -170,7 +217,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'uf', name: 'Amon\'s Avatar', title: 'The Dark God', shape: 'hybrid', color: 0xff3060, hp: 70000, speed: 90, damage: 56, radius: 74, abilities: ['burst', 'cross', 'voidzones', 'pods', 'slam'], summon: 'hybridling', split: ['hybrid', 2] },
   },
   {
-    id: 'braxis', name: 'Braxis', desc: 'A frozen UED stronghold. Directorate marines and captured Zerg guard the Psi Disrupter.', tier: 3.9, minutes: 20,
+    id: 'braxis', name: 'Braxis', desc: 'A frozen UED stronghold. Directorate marines and captured Zerg guard the Psi Disrupter.', tier: 3.9, minutes: 13.5,
     ground: [0x5a6a7a, 0x4c5a68], doodad: 0x9ad8ff,
     waves: [
       { from: 0, pool: [['marine', 6], ['zergling', 6]] },
@@ -189,7 +236,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'xf', name: 'Admiral DuGalle', title: 'United Earth Directorate', shape: 'marine', color: 0x3060c0, hp: 90000, speed: 95, damage: 58, radius: 60, abilities: ['barrage', 'pods', 'charge', 'cross', 'voidzones'], summon: 'firebat', split: ['siegetank', 2] },
   },
   {
-    id: 'shakuras', name: 'Shakuras', desc: 'The Dark Templar refuge, overrun by the Swarm and stalked by hybrids in its twin temples.', tier: 4.6, minutes: 22,
+    id: 'shakuras', name: 'Shakuras', desc: 'The Dark Templar refuge, overrun by the Swarm and stalked by hybrids in its twin temples.', tier: 4.6, minutes: 13.5,
     ground: [0x6a5a3a, 0x5c4e32], doodad: 0x4fd2ff,
     waves: [
       { from: 0, pool: [['hybridling', 5], ['zergling', 8], ['zealot', 2]] },
@@ -207,6 +254,19 @@ export const ZONES: ZoneDef[] = [
     ],
     final: { id: 'sf', name: 'The Second Overmind', title: 'Will of the Swarm', shape: 'ultra', color: 0x8a1ad0, hp: 120000, speed: 70, damage: 64, radius: 80, abilities: ['burst', 'summon', 'slam', 'pods', 'voidzones'], summon: 'ultralisk', split: ['hybrid', 3] },
   },
+];
+
+/**
+ * Units from all three races that join every zone's own waves, by the minute they start showing up
+ * (later zones get them sooner). Half of all spawns come from here, so a run always mixes Zerg,
+ * Terran and Protoss, ground and air.
+ */
+export const MIXED_ROSTER: { from: number; pool: [string, number][] }[] = [
+  { from: 0, pool: [['zergling', 3], ['drone', 2], ['scv', 2], ['probe', 2], ['marine', 2], ['zealot', 1]] },
+  { from: 1.5, pool: [['hydralisk', 2], ['medic', 1], ['vulture', 2], ['scourge', 2], ['mutalisk', 2], ['baneling', 1]] },
+  { from: 4, pool: [['roach', 2], ['firebat', 2], ['stalker', 2], ['wraith', 2], ['goliath', 2], ['corsair', 2], ['queen', 1], ['darktemplar', 1]] },
+  { from: 7, pool: [['ghost', 2], ['hightemplar', 2], ['reaver', 1], ['guardian', 1], ['defiler', 1], ['scout', 1]] },
+  { from: 10, pool: [['ultralisk', 1], ['archon', 1], ['siegetank', 1], ['battlecruiser', 1], ['carrier', 1], ['arbiter', 1]] },
 ];
 
 export const ZONE_BY_ID: Record<string, ZoneDef> = Object.fromEntries(ZONES.map((z) => [z.id, z]));

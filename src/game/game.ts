@@ -4,7 +4,7 @@ import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
 import type { DailyDef } from '../data/daily';
 import { MODULES, type ModuleDef } from '../data/modules';
 import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
-import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
+import { ENEMIES, MIXED_ROSTER, SHAPE_INFO, ZONES, type BossDef, type BossMechanic, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem, type LegendaryEffect } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import type { HeroDef } from '../data/heroes';
@@ -24,10 +24,23 @@ import { damp, hyp } from './math';
 import type { Input } from './input';
 import { bwIcon, dashIcon, spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
+import { wc3AnimLength, wc3Frame, wc3Hero, type Wc3Sprite } from '../wc3/sprites';
 
 const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no real map
 const GRID_HALF = 3600; // half-size of the spatial grid around the player
 const LAIRS = 4;
+const WC3_HERO_SCALE = 1; // pre-rendered sheets are already at Brood War unit size
+const BOSS_SIZE = 2.2; // bosses tower over the swarm, like Azeroth Survivors' raid bosses
+const BERSERK = 120;
+/** Azeroth Survivors' clock: a boss every 2:15, the sixth (the zone's final boss) at 13:30, and the zone is won at 15:00. */
+export const BOSS_EVERY = 135;
+export const VICTORY_SECS = 900; // seconds before a boss goes berserk (final bosses get longer)
+/** What each race's bosses call their raid mechanics. */
+const MECHANIC_NAMES: Record<'zerg' | 'terran' | 'protoss', Record<BossMechanic, string>> = {
+  zerg: { soak: 'Bile Meteor', mark: 'Parasite', nova: 'Psionic Shockwave', safezone: 'Brood Plague' },
+  terran: { soak: 'Yamato Strike', mark: 'Lockdown Beacon', nova: 'Nuclear Launch', safezone: 'Orbital Bombardment' },
+  protoss: { soak: 'Psionic Meteor', mark: 'Stasis Mark', nova: 'Psionic Nova', safezone: 'Void Collapse' },
+};
 const CACHES = 5;
 const GAP = 600; // closest two landmarks may be
 const LANDMARK_FAR = 3200; // landmarks farther than this from the player move closer
@@ -153,6 +166,9 @@ export class Game {
   private ovLine = new SpritePass(this.layers.overlay, () => Texture.WHITE, 0);
   heroSprite!: Sprite;
   private heroBw: BwSprite | null = null;
+  /** Warcraft III hero sheets, when the site ships them; otherwise the Brood War sprite above. */
+  private heroWc3: Wc3Sprite | null = null;
+  private castAt = -99;
   private heroAngle = 0;
   barrierSprite!: Sprite;
 
@@ -302,12 +318,12 @@ export class Game {
     this.player.shield = this.stats.maxShield;
     const z = this.zone;
     // build every enemy texture this zone uses now, so the first appearance of a unit doesn't hitch
-    const ids = new Set([...z.waves.flatMap((w) => w.pool.map(([id]) => id)), z.elite, z.guardian]);
+    const ids = new Set([...z.waves.flatMap((w) => w.pool.map(([id]) => id)), ...MIXED_ROSTER.flatMap((w) => w.pool.map(([id]) => id)), z.elite, z.guardian]);
     for (const id of ids) {
       const d = ENEMIES[id];
       if (d) enemyTexture(d.shape, d.color, d.radius);
     }
-    for (const b of [...z.bosses, z.final]) enemyTexture(b.shape, b.color, b.radius);
+    for (const b of [...z.bosses, z.final]) enemyTexture(b.shape, b.color, b.radius * BOSS_SIZE);
     // later zones start you with a few free level-ups so the first minute isn't a stat check
     const zi = ZONES.findIndex((x) => x.id === z.id);
     if (zi > 0) {
@@ -318,6 +334,8 @@ export class Game {
     this.learnSpell(this.hero.startSpell, 0);
     if (tb.startSpell && tb.startSpell !== this.hero.startSpell) this.learnSpell(tb.startSpell, 0);
     this.zoom = save.settings.zoom * (Math.min(window.innerWidth, window.innerHeight) < 600 ? 0.75 : 1);
+    // dev builds expose the run for playtest bots
+    if (import.meta.env.DEV) (window as unknown as { game?: Game }).game = this;
   }
 
   // ------------------------------------------------------------ scene
@@ -414,7 +432,8 @@ export class Game {
     shadow.scale.set(0.9);
     this.layers.shadows.addChild(shadow);
     this.heroSprite = new Sprite(heroTexture(this.race.id));
-    this.heroBw = bwSprite(this.hero.sprite) ?? bwSprite(`hero:${this.race.id}`) ?? null;
+    this.heroWc3 = wc3Hero(this.hero.art);
+    this.heroBw = this.heroWc3 ? null : (bwSprite(this.hero.sprite) ?? bwSprite(`hero:${this.race.id}`) ?? null);
     this.heroSprite.anchor.set(0.5);
     this.heroSprite.scale.set(1.25);
     this.layers.units.addChild(this.heroSprite);
@@ -542,7 +561,12 @@ export class Game {
     // (starting at 20% of the tier still killed fresh heroes on Aiur and Ulnar inside two minutes)
     const ramp = Math.min(1, 0.05 + (0.95 * m) / (this.zone.minutes * 0.7));
     const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
-    return { hp: tier * (1 + m * 0.16 + m * m * 0.012) * this.diff.hp, dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) * this.diff.dmg };
+    // past minute 5 the swarm outgrows a coasting build: health and damage climb much faster
+    const late = Math.max(0, m - 5);
+    return {
+      hp: tier * (1 + m * 0.16 + m * m * 0.012 + late * late * 0.035) * this.diff.hp,
+      dmg: Math.pow(tier, 0.85) * (1 + m * 0.07 + late * 0.06) * this.diff.dmg,
+    };
   }
 
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
@@ -551,7 +575,7 @@ export class Game {
     let e = this.enemyPool.pop();
     const shape = opts.boss?.shape ?? def.shape;
     const color = opts.boss?.color ?? def.color;
-    const radius = opts.boss?.radius ?? def.radius;
+    const radius = opts.boss ? opts.boss.radius * BOSS_SIZE : def.radius;
     const tex = enemyTexture(shape, color, radius);
     if (!e) {
       const spr = new Sprite(tex);
@@ -586,14 +610,17 @@ export class Game {
     if (opts.boss) {
       const b = opts.boss;
       // final bosses were long, low-threat fights; they have less health and attack more often instead
-      const bossHp = b.hp * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
+      const bossHp = b.hp * 1.4 * (opts.hpMult ?? 1) * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
       e.maxHp = bossHp;
       e.speed = b.speed;
       e.damage = b.damage * Math.pow(this.zone.tier, 0.6) * this.diff.dmg;
-      e.radius = b.radius;
+      e.radius = radius;
       e.mass = 20;
       e.xp = 60;
-      e.boss = { def: b, abilityTimer: 2.5, enraged: false, charging: 0, chargeDx: 0, chargeDy: 0, windup: 0, final: !!opts.final, phase2: false };
+      e.boss = {
+        def: b, abilityTimer: 2.5, enraged: false, charging: 0, chargeDx: 0, chargeDy: 0, windup: 0, final: !!opts.final, phase2: false,
+        mechanicTimer: 6, alive: 0, berserk: false, addWaves: opts.final ? [0.75, 0.5, 0.25] : [0.66, 0.33], cast: '', castT: 0, castMax: 0, castFn: null,
+      };
       this.bosses.push(e);
     } else {
       e.maxHp = def.hp * hpScale * (opts.hpMult ?? 1);
@@ -882,13 +909,11 @@ export class Game {
       this.dropPickup('magnet', e.x, e.y - 30, 0);
       const rar = Math.min(4, rollRarity(this.stats.luck + this.diff.luck + 1) + 1) as Rarity;
       const loot = rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0));
-      if (e.boss.final && !this.endless) {
+      if (e.boss.final && !this.endless && !this.victoryShown) {
         this.removeEnemyAt(i);
-        this.victoryShown = true;
-        sfx('win');
         // hand the final boss's gear over directly so extracting can't leave it on the ground
         this.hooks.gear(loot);
-        this.hooks.victory();
+        this.winZone();
         return;
       }
       this.dropPickup('gear', e.x + 30, e.y, 0, loot);
@@ -1068,11 +1093,11 @@ export class Game {
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
         ...[
-          [6, 'Napalm burn', bwIcon('napalm', '🔥')],
-          [SLOT_NUKE, 'Tactical Nuke', bwIcon('nuke', '☢️')],
-          [SLOT_FEEDBACK, 'Feedback', bwIcon('feedback', '💫')],
+          [6, 'Immolation burn', bwIcon('napalm', '🔥')],
+          [SLOT_NUKE, 'Avatar', bwIcon('nuke', '☢️')],
+          [SLOT_FEEDBACK, 'Ancestral Wrath', bwIcon('feedback', '💫')],
           [SLOT_DASH, this.race.dashName, dashIcon(this.race.id)],
-          [SLOT_RACIAL, 'Orbital Strike', '🛰️'],
+          [SLOT_RACIAL, 'Flame Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
     });
@@ -1226,8 +1251,9 @@ export class Game {
     const sh = e.def.shape;
     deathSfx(e.boss?.def.shape ?? sh);
     const s = Math.max(0.8, (e.radius * (e.boss ? 1.2 : 1)) / 14);
-    if (sh === 'zealot' || sh === 'stalker' || sh === 'archon' || sh === 'hybrid') return this.addAnim('fx:pdeath', e.x, e.y, s * 0.7, 0.55);
-    if (sh === 'marine' || sh === 'firebat' || sh === 'tank') return this.addAnim(big ? 'fx:tbangl' : 'fx:tbangs', e.x, e.y, s * 0.6, 0.6);
+    const race = SHAPE_INFO[sh]?.race;
+    if (race === 'protoss') return this.addAnim('fx:pdeath', e.x, e.y, s * 0.7, 0.55);
+    if (race === 'terran') return this.addAnim(big ? 'fx:tbangl' : 'fx:tbangs', e.x, e.y, s * 0.6, 0.6);
     if (!this.addAnim(big ? 'fx:zdeathl' : 'fx:zdeath', e.x, e.y, s * 0.55, 0.45)) return false;
     // blood splat left on the ground for a while
     if (this.fxs.length < 600) this.addAnim(`fx:blood${1 + Math.floor(Math.random() * 4)}`, e.x, e.y, s * 0.8, 6, this.layers.ground);
@@ -1371,7 +1397,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------ boss logic
-  private spawnBoss(def: BossDef, final: boolean) {
+  private spawnBoss(def: BossDef, final: boolean, hpMult = 1) {
     const p = this.player;
     const a = Math.random() * Math.PI * 2;
     const base = ENEMIES[def.summon ?? 'zergling'] ?? ENEMIES.zergling;
@@ -1390,7 +1416,7 @@ export class Game {
       }
       if (far >= 0) this.removeEnemyAt(far);
     }
-    const e = this.spawnEnemy(base, p.x + Math.cos(a) * 600, p.y + Math.sin(a) * 600, { boss: def, final });
+    const e = this.spawnEnemy(base, p.x + Math.cos(a) * 750, p.y + Math.sin(a) * 750, { boss: def, final, hpMult });
     if (!e) return;
     sfx('boss');
     this.shake(10);
@@ -1418,9 +1444,39 @@ export class Game {
     if (!b.enraged && e.hp < e.maxHp * 0.3) {
       b.enraged = true;
       e.sprite.tint = 0xff7070;
-      this.hooks.toast(`${b.def.name} is enraged!`, '#ff5050');
+      this.raidWarning(`${b.def.name} is enraged!`);
+    }
+    if (b.addWaves.length && e.hp < e.maxHp * b.addWaves[0]) {
+      b.addWaves.shift();
+      this.bossAdds(e, b);
+    }
+    b.alive += dt;
+    if (!b.berserk && b.alive > BERSERK * (b.final ? 1.5 : 1)) {
+      // a soft DPS check, like a raid boss's berserk timer
+      b.berserk = true;
+      e.damage *= 1.6;
+      e.speed *= 1.35;
+      this.raidWarning(`${b.def.name} goes berserk!`);
+      sfx('boss');
     }
     const rage = b.enraged ? 1.3 : 1;
+    // channelling a raid mechanic: the boss stands still until it goes off
+    if (b.castT > 0) {
+      b.castT -= dt;
+      if (b.castT <= 0) {
+        b.cast = '';
+        const fn = b.castFn;
+        b.castFn = null;
+        fn?.();
+      }
+      return;
+    }
+    b.mechanicTimer -= dt;
+    if (b.mechanicTimer <= 0 && b.windup <= 0 && b.charging <= 0) {
+      b.mechanicTimer = (b.berserk ? 5 : b.enraged ? 6.5 : 9) + Math.random() * 2;
+      this.bossMechanic(e, b);
+      return;
+    }
     if (b.windup > 0) {
       b.windup -= dt;
       if (b.windup <= 0) b.charging = 0.6;
@@ -1532,6 +1588,133 @@ export class Game {
     }
   }
 
+  /** A WoW-style raid warning across the middle of the screen. */
+  raidWarnings: string[] = [];
+  private raidWarning(text: string) {
+    this.raidWarnings.push(text);
+  }
+
+  /** At each health threshold the boss calls in a wave of adds from the whole StarCraft roster. */
+  private bossAdds(e: Enemy, b: BossState) {
+    const p = this.player;
+    const m = this.time / 60;
+    const zi = Math.max(0, ZONES.findIndex((x) => x.id === this.zone.id));
+    const pool: string[] = [];
+    for (const w of MIXED_ROSTER) if (m + zi * 0.8 >= w.from) for (const [id] of w.pool) pool.push(id);
+    const n = b.final ? 22 : 16;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      this.spawnEnemy(ENEMIES[pool[Math.floor(Math.random() * pool.length)]], p.x + Math.cos(a) * 420, p.y + Math.sin(a) * 420);
+    }
+    for (let k = 0; k < (b.final ? 3 : 2); k++) {
+      const a = Math.random() * Math.PI * 2;
+      const el = this.spawnEnemy(ENEMIES[this.zone.elite], e.x + Math.cos(a) * (e.radius + 60), e.y + Math.sin(a) * (e.radius + 60), { elite: true, hpMult: 2.5, scale: 1.3 });
+      if (el) this.rollAffixes(el, 1);
+    }
+    this.raidWarning(`${b.def.name} calls for reinforcements!`);
+    sfx('boss');
+    this.shake(8);
+  }
+
+  /** One raid mechanic: more of them unlock as the boss loses health. */
+  private bossMechanic(e: Enemy, b: BossState) {
+    const p = this.player;
+    const list: BossMechanic[] = ['soak', 'mark'];
+    if (b.phase2 || b.final) list.push('nova');
+    if (b.enraged || (b.final && b.phase2)) list.push('safezone');
+    const mech = list[Math.floor(Math.random() * list.length)];
+    const name = MECHANIC_NAMES[SHAPE_INFO[b.def.shape]?.race ?? 'zerg'][mech];
+    const dmg = e.damage;
+    const by = `${b.def.name}'s ${name}`;
+    switch (mech) {
+      case 'soak': {
+        // stand in it to take a small share; let it land empty and it hits much harder
+        const a = Math.random() * Math.PI * 2;
+        const x = p.x + Math.cos(a) * (220 + Math.random() * 100);
+        const y = p.y + Math.sin(a) * (220 + Math.random() * 100);
+        const r = 100;
+        this.raidWarning(`${b.def.name} casts ${name}! Stand in the purple circle!`);
+        this.telegraphs.push({
+          kind: 'circle', x, y, r, dx: 0, dy: 0, len: 0, t: 0, max: 3, damage: 0, friendly: false, color: 0xc050ff,
+          onDone: () => {
+            const inside = hyp(this.player.x - x, this.player.y - y) < r + 12;
+            this.addFx(fx.soft(), x, y, 0xc050ff, 0.6, (r * 2.6) / 128, 0.5, 1);
+            this.shake(inside ? 6 : 14);
+            sfx('explode');
+            this.forEnemiesInRadius(x, y, r * 1.6, (o) => !o.boss && this.hit(o, dmg * 5, -1, { quiet: true, noCrit: true }));
+            this.damagePlayer(inside ? dmg * 0.4 : dmg * 2.2, by);
+            if (!inside) this.floatText(this.player.x, this.player.y - 40, 'MISSED THE SOAK', 0xc050ff, 0.8);
+          },
+        });
+        break;
+      }
+      case 'mark': {
+        // a bomb that follows the hero, then goes off where they stand: drag it through the swarm
+        const r = 150;
+        this.raidWarning(`${name} on you! Drag it into the swarm, then get out!`);
+        const t = { kind: 'circle' as const, x: p.x, y: p.y, r, dx: 0, dy: 0, len: 0, t: 0, max: 4, damage: 0, friendly: false, color: 0xff9020, followUntil: 0.9, onDone: null as (() => void) | null };
+        t.onDone = () => {
+          this.addFx(fx.soft(), t.x, t.y, 0xff9020, 0.6, (r * 2.6) / 128, 0.5, 1);
+          this.shake(10);
+          sfx('explode');
+          this.forEnemiesInRadius(t.x, t.y, r, (o) => !o.boss && this.hit(o, dmg * 8, -1, { quiet: true, noCrit: true }));
+          if (hyp(this.player.x - t.x, this.player.y - t.y) < r) this.damagePlayer(dmg * 1.3, by);
+        };
+        this.telegraphs.push(t);
+        break;
+      }
+      case 'nova': {
+        // the boss channels; get out of the big ring before it ends
+        const r = 340 + e.radius;
+        b.cast = name;
+        b.castT = b.castMax = 2.6;
+        this.raidWarning(`${b.def.name} begins to cast ${name}! Get away from the boss!`);
+        sfx('boss');
+        this.telegraphs.push({ kind: 'circle', x: e.x, y: e.y, r, dx: 0, dy: 0, len: 0, t: 0, max: 2.6, damage: 0, friendly: false, onDone: null });
+        const x = e.x;
+        const y = e.y;
+        b.castFn = () => {
+          this.addFx(fx.ring(), x, y, 0xff4040, 0.1, (r * 2) / 224, 0.45, 1);
+          this.addFx(fx.soft(), x, y, 0xff6040, 0.5, (r * 2.2) / 128, 0.45, 0.8);
+          this.shake(16);
+          sfx('explode');
+          if (hyp(this.player.x - x, this.player.y - y) < r) this.damagePlayer(dmg * 2.5, by);
+        };
+        break;
+      }
+      case 'safezone': {
+        // everything outside the green circles gets hit
+        const r = 120;
+        const zones: [number, number][] = [];
+        for (let k = 0; k < 3; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = 260 + Math.random() * 220;
+          zones.push([p.x + Math.cos(a) * d, p.y + Math.sin(a) * d]);
+        }
+        this.raidWarning(`${b.def.name} prepares ${name}! Take cover in a green circle!`);
+        sfx('boss');
+        zones.forEach(([x, y], k) =>
+          this.telegraphs.push({
+            kind: 'circle', x, y, r, dx: 0, dy: 0, len: 0, t: 0, max: 4.2, damage: 0, friendly: false, color: 0x40ff70,
+            onDone: k ? null : () => {
+              const safe = zones.some(([zx, zy]) => hyp(this.player.x - zx, this.player.y - zy) < r + 10);
+              this.shake(18);
+              sfx('explode');
+              for (let j = 0; j < 10; j++) {
+                const a = Math.random() * Math.PI * 2;
+                const d = Math.random() * 600;
+                this.addFx(fx.soft(), this.player.x + Math.cos(a) * d, this.player.y + Math.sin(a) * d, 0xff5030, 0.5, 2.2, 0.5, 0.9);
+              }
+              this.forEnemiesInRadius(this.player.x, this.player.y, 700, (o) => !o.boss && this.hit(o, dmg * 3, -1, { quiet: true, noCrit: true }));
+              if (!safe) this.damagePlayer(dmg * 3, by);
+            },
+          }),
+        );
+        break;
+      }
+    }
+  }
+
   /** A telegraphed circle that hurts the hero (and enemies, if hitsEnemies) when its fuse runs out. */
   private hazard(x: number, y: number, r: number, fuse: number, dmg: number, by: string, hitsEnemies: boolean, then?: () => void, color = 0xff6030) {
     this.telegraphs.push({
@@ -1565,7 +1748,7 @@ export class Game {
     const p = this.player;
     const o = this.objective;
     if (!o) {
-      // between bosses (3, 6, 9... minutes), never while one is up or in endless mode
+      // between bosses, never while one is up or in endless mode
       if (this.time < this.nextObjective || this.endless || this.bosses.length || this.time > this.zone.minutes * 60 - 60) return;
       this.nextObjective = this.time + 150 + Math.random() * 30;
       this.startObjective();
@@ -1739,7 +1922,7 @@ export class Game {
         for (let k = 0; k < 6; k++) {
           const a = Math.random() * Math.PI * 2;
           const d = k === 0 ? 0 : 90 + Math.random() * 280;
-          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 100, 1.2, 14 * sc, 'Psionic Storm', true, undefined, 0x9a7cff);
+          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 100, 1.2, 14 * sc, 'Earthquake', true, undefined, 0x9a7cff);
         }
         toast('Psionic storms rain down! Lure enemies into them.', '#b48cff');
         break;
@@ -1898,6 +2081,8 @@ export class Game {
       if (sp.timer <= 0) {
         const ok = castSpell(this, sp);
         sp.timer = ok ? sp.stats.cooldown : 0.15;
+        // a new swing starts only once the last one has played out
+        if (ok && this.heroWc3 && this.time - this.castAt > wc3AnimLength(this.heroWc3, 'attack')) this.castAt = this.time;
         if (ok && this.flags.has('echo') && Math.random() < 0.15) this.timers.push({ at: this.time + 0.15, fn: () => castSpell(this, sp) });
         if (ok && this.gearFx.has('twincast') && ++this.twinCount % 4 === 0) this.timers.push({ at: this.time + 0.2, fn: () => castSpell(this, sp) });
       }
@@ -1979,24 +2164,40 @@ export class Game {
     });
   }
 
+  /** Killing the final boss, or lasting until the bell at 15:00, clears the zone. */
+  private winZone() {
+    this.victoryShown = true;
+    sfx('win');
+    this.hooks.victory();
+  }
+
+  /** When the next boss arrives (game seconds), or null when none is left before the bell. */
+  get nextBossAt(): number | null {
+    if (this.endless) return this.time + this.endlessBossT;
+    return this.nextBoss <= this.zone.bosses.length + 1 ? (this.nextBoss + 1) * BOSS_EVERY : null;
+  }
+
   private direct(dt: number) {
     const m = this.time / 60;
     const z = this.zone;
     const p = this.player;
-    // bosses
+    // bosses: the zone's four, then two of them return together, then the final boss at 13:30
     if (!this.endless) {
-      if (this.nextBoss < z.bosses.length && this.time >= (this.nextBoss + 1) * 180) {
-        this.spawnBoss(z.bosses[this.nextBoss], false);
+      if (this.nextBoss <= z.bosses.length + 1 && this.time >= (this.nextBoss + 1) * BOSS_EVERY) {
+        if (this.nextBoss < z.bosses.length) this.spawnBoss(z.bosses[this.nextBoss], false);
+        else if (this.nextBoss === z.bosses.length) {
+          // a council fight, like a raid's twin bosses
+          const n = z.bosses.length;
+          this.spawnBoss(z.bosses[n - 2], false, 1.6);
+          this.spawnBoss(z.bosses[n - 1], false, 1.1);
+        } else this.spawnBoss(z.final, true);
         this.nextBoss++;
       }
-      if (this.nextBoss === z.bosses.length && this.time >= z.minutes * 60) {
-        this.spawnBoss(z.final, true);
-        this.nextBoss++;
-      }
+      if (!this.victoryShown && this.time >= VICTORY_SECS) this.winZone();
     } else {
       this.endlessBossT -= dt;
       if (this.endlessBossT <= 0) {
-        this.endlessBossT = 120;
+        this.endlessBossT = BOSS_EVERY;
         const list = [...z.bosses, z.final];
         this.spawnBoss(list[this.endlessIdx % list.length], false);
         this.endlessIdx++;
@@ -2009,13 +2210,17 @@ export class Game {
     this.spawnAcc = Math.min(this.spawnAcc + rate * dt, 12);
     let wave = z.waves[0];
     for (const w of z.waves) if (m >= w.from) wave = w;
-    const total = wave.pool.reduce((a, [, w]) => a + w, 0);
+    // half the spawns come from the whole StarCraft roster, unlocked tier by tier (sooner in later zones)
+    const zi = Math.max(0, ZONES.findIndex((x) => x.id === z.id));
+    const mixed: [string, number][] = [];
+    for (const w of MIXED_ROSTER) if (m + zi * 0.8 >= w.from) mixed.push(...w.pool);
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
       if (this.enemyCount >= MAX_ALIVE) break;
-      let r = Math.random() * total;
-      let id = wave.pool[0][0];
-      for (const [eid, w] of wave.pool) {
+      const pool = Math.random() < 0.5 ? wave.pool : mixed;
+      let r = Math.random() * pool.reduce((a, [, w]) => a + w, 0);
+      let id = pool[0][0];
+      for (const [eid, w] of pool) {
         r -= w;
         if (r <= 0) {
           id = eid;
@@ -2256,10 +2461,11 @@ export class Game {
       const cr = e.radius + 14;
       if (d < cr && e.contactCd <= 0) {
         // a charger's charge hits once, not on every contact tick
-        e.contactCd = e.def.behavior === 'charger' ? 1.2 : 0.6;
+        e.contactCd = e.boss ? 1 : e.def.behavior === 'charger' ? 1.2 : 0.6;
         if (e.affixes.length && e.affixes.includes('vampiric')) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.08);
         // the swarm nibbles early on and bites later, so the first minutes play as a power trip
-        const grace = e.boss || e.elite ? 1 : Math.min(1, 0.5 + this.time / 600);
+        // a boss's body is huge now; its mechanics are the threat, not bumping into it
+        const grace = e.boss ? 0.5 : e.elite ? 1 : Math.min(1, 0.5 + this.time / 600);
         this.damagePlayer((e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage) * grace, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
       }
       this.grid.insert(i, e.x, e.y);
@@ -2438,6 +2644,10 @@ export class Game {
     for (let i = this.telegraphs.length - 1; i >= 0; i--) {
       const t = this.telegraphs[i];
       t.t += dt;
+      if (t.followUntil !== undefined && t.max - t.t > t.followUntil) {
+        t.x = this.player.x;
+        t.y = this.player.y;
+      }
       if (t.t >= t.max) {
         t.onDone?.();
         this.telegraphs.splice(i, 1);
@@ -2679,7 +2889,16 @@ export class Game {
     const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0 || !!this.moveTarget;
     this.heroAngle = angleLerpTo(this.heroAngle, p.facing, damp(21, dt));
     const bob = moving && !this.paused ? 1 + Math.sin(this.time * 18) * 0.04 : 1;
-    if (this.heroBw) {
+    if (this.heroWc3) {
+      // walk while moving; standing still, swing at whatever the spells just hit
+      const w = this.heroWc3;
+      const swing = this.time - this.castAt < wc3AnimLength(w, 'attack');
+      if (moving && !this.paused) hs.texture = wc3Frame(w, 'walk', this.time, this.heroAngle);
+      else if (swing) hs.texture = wc3Frame(w, 'attack', this.time - this.castAt, this.heroAngle, false);
+      else hs.texture = wc3Frame(w, 'stand', this.time, this.heroAngle);
+      hs.rotation = 0;
+      hs.scale.set(WC3_HERO_SCALE);
+    } else if (this.heroBw) {
       orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1, moving && !this.paused ? walkFrame(this.heroBw, this.time) : 0);
       if (!this.heroBw.walk) hs.scale.y *= 1 / bob;
     } else {
@@ -2765,7 +2984,7 @@ export class Game {
     const line = this.ovLine.begin();
     for (const t of this.telegraphs) {
       const k = t.t / t.max;
-      const col = t.friendly ? 0xffd040 : 0xff3030;
+      const col = t.color ?? (t.friendly ? 0xffd040 : 0xff3030);
       if (t.kind === 'circle') {
         disc.add(t.x, t.y, t.r / 64, t.r / 64, 0, col, 0.3);
         ring.add(t.x, t.y, t.r / 112, t.r / 112, 0, col, 0.8);

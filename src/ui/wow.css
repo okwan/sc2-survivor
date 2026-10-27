@@ -321,7 +321,16 @@ html.wow .hud .lvl, html.wow .hud .stats { font-weight: normal; }
 
 /* ---------------------------------------------------------- the WoW HUD (src/ui/wowhud.ts) */
 .hud.wowmode .vitals, .hud.wowmode .spells, .hud.wowmode .dash, .hud.wowmode .pausebtn,
-.hud.wowmode .xp, .hud.wowmode .stats, .hud.wowmode .bosses { display: none; }
+.hud.wowmode .xp, .hud.wowmode .stats { display: none; }
+/* boss health and cast bars, like a raid boss frame and its casting bar */
+html.wow .bossbar .nm { font-weight: normal; color: #fff; text-shadow: 1px 1px 0 #000; font-size: 14px; }
+html.wow .bossbar .nm span { color: var(--wow-gold); font-weight: normal; }
+html.wow .bossbar .b { height: 14px; background: rgba(0, 0, 0, 0.6); border: 1px solid #000; box-shadow: 0 0 0 1px #8a7a5a; }
+html.wow .bossbar .b i { background: var(--wow-statusbar) 0 0 / 100% 100%, #e01010; background-blend-mode: multiply; }
+html.wow .bossbar .cast { height: 13px; border: 1px solid #000; box-shadow: 0 0 0 1px #8a7a5a; }
+html.wow .bossbar .cast i { background: var(--wow-statusbar) 0 0 / 100% 100%, #ffb300; background-blend-mode: multiply; }
+html.wow .bossbar .cast span { font-weight: normal; font-size: 11px; line-height: 13px; }
+html.wow .raid-warning { font-family: 'Friz Quadrata', serif; font-weight: normal; color: #ff2020; text-shadow: 2px 2px 0 #000; }
 .hud.wowmode .objective { top: 110px; left: 16px; }
 .wowhud { position: absolute; inset: 0; pointer-events: none; font-family: 'Friz Quadrata', Georgia, serif; }
 .wowhud * { box-sizing: content-box; }
@@ -350,17 +359,13 @@ html.wow .hud .lvl, html.wow .hud .stats { font-weight: normal; }
 
 .wowunit { position: absolute; top: 4px; width: 232px; height: 100px; transform-origin: 0 0; }
 .wowunit.player { left: 0; }
-.wowunit.target { left: 250px; }
 .wowunit .art { position: absolute; inset: 0; background-size: 100% 100%; }
 .wowunit .back { position: absolute; top: 22px; width: 119px; height: 41px; background: rgba(0, 0, 0, 0.5); }
 .wowunit.player .back { left: 106px; }
-.wowunit.target .back { left: 6px; }
 .wowunit .portrait { position: absolute; top: 12px; width: 64px; height: 64px; border-radius: 50%; background-size: 100% 100%; }
 .wowunit.player .portrait { left: 42px; }
-.wowunit.target .portrait { left: 126px; }
 .wowunit .sb { position: absolute; width: 119px; height: 12px; overflow: hidden; }
 .wowunit.player .sb { left: 106px; }
-.wowunit.target .sb { left: 6px; }
 .wowunit .sb.hp { top: 41px; }
 .wowunit .sb.mp { top: 52px; }
 .wowunit .sb > i { position: absolute; inset: 0; transform-origin: left; background: var(--wow-statusbar) 0 0 / 100% 100%, #00ff00; background-blend-mode: multiply; }
@@ -369,11 +374,9 @@ html.wow .hud .lvl, html.wow .hud .stats { font-weight: normal; }
 .wowunit .sb > span { position: absolute; inset: 0; text-align: center; font: 10px/12px 'Arial Narrow WoW', 'Arial Narrow', sans-serif; color: #fff; text-shadow: 1px 1px 0 #000; }
 .wowunit .nm { position: absolute; top: 24px; width: 119px; text-align: center; font-size: 11px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; white-space: nowrap; overflow: hidden; }
 .wowunit.player .nm { left: 106px; }
-.wowunit.target .nm { left: 6px; }
 .wowunit .lvl { position: absolute; left: 38px; top: 59px; width: 30px; text-align: center; font-size: 11px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; }
 .wowunit .skull { position: absolute; left: 171px; top: 58px; width: 16px; height: 16px; background-size: 100% 100%; }
 .wowunit.player.hurt .portrait { box-shadow: inset 0 0 18px rgba(255, 0, 0, 0.8); }
-.wowunit.target.enraged .portrait { filter: sepia(1) saturate(4) hue-rotate(-30deg); }
 
 .wowmm { position: absolute; right: 0; top: 0; width: 192px; height: 210px; transform-origin: 100% 0; }
 .wowmm .radar { position: absolute; left: 35px; top: 22px; width: 140px; height: 140px; border-radius: 50%; }

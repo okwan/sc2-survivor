@@ -31,6 +31,18 @@ jobs:
           NODE_ENV: production
           BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
+      # Warcraft III heroes are rendered into sprite sheets at deploy time; raw files are cached between runs.
+      - uses: actions/cache@v4
+        with:
+          path: .wc3-cache
+          key: wc3-${{ hashFiles('src/wc3/*.ts') }}
+          restore-keys: wc3-
+      - run: node scripts/fetch-wc3.mjs dist
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          WC3_ARCHIVE_URL: ${{ vars.WC3_ARCHIVE_URL }}
+          WC3_PREVIEW: ${{ github.ref != 'refs/heads/main' && 'archmage-walk,tauren-walk,deathknight-attack' || '' }}
+          WC3_LIST_ICONS: 1
       # The WoW 1.12 interface (frames, buttons, action bar, icons, fonts) is converted at deploy time;
       # converted files are cached between runs so the client is only downloaded once.
       - uses: actions/cache@v4
@@ -42,7 +54,6 @@ jobs:
       - run: node scripts/fetch-wow.mjs dist
         env:
           WOW_ARCHIVE_URL: ${{ vars.WOW_ARCHIVE_URL }}
-      - run: node scripts/probe-wow.mjs
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:

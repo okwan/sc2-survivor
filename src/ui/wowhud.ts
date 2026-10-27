@@ -1,6 +1,8 @@
+import { spellIconUrl } from '../bw/ui';
 import type { Game } from '../game/game';
 import { wowIcon } from '../wow/icons';
 import { wowCrop, wowFile, wowIconUrl } from '../wow/ui';
+import { wc3HeroIconUrl } from '../wc3/sprites';
 import { Radar } from './radar';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] {
@@ -38,7 +40,7 @@ interface Btn {
 
 /**
  * The WoW 1.12 interface around the game: the player frame (portrait, health, shield or energy),
- * a target frame for the current boss, the round minimap, and the main action bar with its
+ * the round minimap, and the main action bar with its
  * gryphons, experience bar, spells, dash, backpack and main menu button. Laid out in the
  * client's own pixel coordinates and scaled as a piece, like the client's UI scale.
  */
@@ -49,16 +51,11 @@ export class WowHud {
   private xpText = el('span');
   private buttons: Btn[] = [];
   private player = el('div', 'wowunit player');
-  private target = el('div', 'wowunit target');
   private pHp = el('i');
   private pMp = el('i');
   private pHpT = el('span');
   private pMpT = el('span');
   private pLvl = el('div', 'lvl');
-  private tHp = el('i');
-  private tHpT = el('span');
-  private tName = el('div', 'nm');
-  private tPortrait = el('div', 'portrait');
   private mm = el('div', 'wowmm');
   private radar: Radar;
   private zone = el('div', 'zonetxt');
@@ -75,9 +72,8 @@ export class WowHud {
     this.radar = new Radar(game, RADAR_PX);
     this.buildBar(pause);
     this.buildPlayer();
-    this.buildTarget();
     this.buildMinimap();
-    this.root.append(this.player, this.target, this.mm, this.bar);
+    this.root.append(this.player, this.mm, this.bar);
     this.fit();
     window.addEventListener('resize', this.onResize);
   }
@@ -93,7 +89,7 @@ export class WowHud {
     const ui = Math.max(0.75, Math.min(1.35, window.innerHeight / 820));
     this.k = Math.min(ui, window.innerWidth / (BAR_W + CAP_OUT * 2));
     this.bar.style.transform = `translateX(-50%) scale(${this.k})`;
-    this.player.style.transform = this.target.style.transform = this.mm.style.transform = `scale(${Math.min(ui, window.innerWidth / 900)})`;
+    this.player.style.transform = this.mm.style.transform = `scale(${Math.min(ui, window.innerWidth / 900)})`;
   }
 
   private buildBar(pause: () => void) {
@@ -166,30 +162,15 @@ export class WowHud {
   private buildPlayer() {
     const p = this.player;
     const portrait = el('div', 'portrait');
-    bg(portrait, heroPortrait(this.game.race.id));
+    bg(portrait, wc3HeroIconUrl(this.game.hero.art) ?? heroPortrait(this.game.race.id));
     const art = el('div', 'art');
     bg(art, wowCrop('interface/targetingframe/ui-targetingframe.png', 1, 0.09375, 0, 0.78125));
-    const name = el('div', 'nm', this.game.race.hero);
+    const name = el('div', 'nm', this.game.hero.name);
     const hp = el('div', 'sb hp');
     hp.append(this.pHp, this.pHpT);
     const mp = el('div', 'sb mp');
     mp.append(this.pMp, this.pMpT);
     p.append(el('div', 'back'), portrait, hp, mp, art, name, this.pLvl);
-  }
-
-  private buildTarget() {
-    const t = this.target;
-    const art = el('div', 'art');
-    bg(art, wowCrop(wowFile('interface/targetingframe/ui-targetingframe-elite.png') ? 'interface/targetingframe/ui-targetingframe-elite.png' : 'interface/targetingframe/ui-targetingframe.png', 0.09375, 1, 0, 0.78125));
-    bg(this.tPortrait, wowIconUrl('INV_Misc_Head_Dragon_01', 'Spell_Shadow_Shadowfury', 'INV_Misc_QuestionMark'));
-    const hp = el('div', 'sb hp');
-    hp.append(this.tHp, this.tHpT);
-    const mp = el('div', 'sb mp');
-    mp.append(el('i'));
-    const skull = el('div', 'skull');
-    bg(skull, wowFile('interface/targetingframe/ui-targetingframe-skull.png'));
-    t.append(el('div', 'back'), this.tPortrait, hp, mp, art, this.tName, skull);
-    t.style.display = 'none';
   }
 
   private buildMinimap() {
@@ -228,7 +209,7 @@ export class WowHud {
         this.setIcon(b, null);
         continue;
       }
-      this.setIcon(b, wowIcon(sp.def.id));
+      this.setIcon(b, spellIconUrl(sp.def.id));
       const passive = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon';
       const k = passive ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
       this.set(`cd${i}`, Math.round(k * 60), () => sweep(b.cd, k));
@@ -269,20 +250,6 @@ export class WowHud {
       this.set('mpt', locked ? 'l' : Math.round(ek * 100), () => (this.pMpT.textContent = locked ? 'Level 5' : `${Math.round(ek * 100)}`));
     }
     this.player.classList.toggle('hurt', hpk < 0.3 && p.hp > 0);
-    // target frame: the first boss alive
-    const b = g.bosses[0];
-    this.set('tvis', b ? b.uid : -1, () => {
-      this.target.style.display = b ? '' : 'none';
-      if (b?.boss) this.tName.textContent = b.boss.def.name;
-    });
-    if (b) {
-      const k = Math.max(0, b.hp / b.maxHp);
-      this.set('thp', Math.round(k * 300), () => {
-        this.tHp.style.transform = `scaleX(${k})`;
-        this.tHpT.textContent = `${Math.round(k * 100)}%`;
-      });
-      this.set('tenr', b.boss?.enraged ? 1 : 0, () => this.target.classList.toggle('enraged', !!b.boss?.enraged));
-    }
     // minimap
     this.set('info', `${p.kills}`, () => (this.info.textContent = `Kills ${p.kills}`));
     if (this.frame++ % 4 === 0) this.radar.draw();
@@ -293,7 +260,7 @@ export class WowHud {
   }
 }
 
-/** The hero's portrait for the player frame: a class-like icon per race. */
+/** A stand-in portrait when the Warcraft III hero icons aren't deployed. */
 function heroPortrait(race: string): string | null {
   const icons: Record<string, string[]> = {
     terran: ['INV_Helmet_03', 'Ability_Warrior_DefensiveStance'],

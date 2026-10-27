@@ -2,6 +2,8 @@ import { bwFile, bwPalette } from './assets';
 import { decodePcx } from './formats';
 import { drawGrpFrame, parseGrp, type GrpFile } from './grp';
 import { BW_UI, ICONS, RACE_UI, SPELL_ICONS } from './ui-files';
+import { WC3_SPELL_ICONS } from '../wc3/assets';
+import { wc3IconUrl } from '../wc3/sprites';
 import { wowIcon } from '../wow/icons';
 import { hasWow } from '../wow/ui';
 
@@ -254,9 +256,10 @@ export function applyBwChrome(race = 'terran') {
   else root.style.removeProperty('--bw-menu-bg');
 }
 
-/** HTML for a spell's icon: the WoW icon, else the Brood War command icon, otherwise its emoji. */
+/** HTML for a spell's icon: its Warcraft III icon, else the WoW icon, else the Brood War command icon, else its emoji. */
 export function spellIcon(id: string, emoji: string): string {
-  return wowIconHtml(id) ?? frameIcon(SPELL_ICONS[id], emoji);
+  const wc3 = wc3IconUrl(WC3_SPELL_ICONS[id]);
+  return wc3 ? `<img class="bwic wc3ic" src="${wc3}" alt="">` : wowIconHtml(id) ?? frameIcon(SPELL_ICONS[id], emoji);
 }
 
 /** HTML for a passive, perk, talent tree or other icon by game id (see ICONS), or its emoji. */
@@ -278,4 +281,9 @@ export function frameIcon(frame: number | undefined, fallback: string): string {
 /** HTML for a race's dash icon. */
 export function dashIcon(race: string): string {
   return wowIconHtml(`dash_${race}`) ?? frameIcon(RACE_UI[race]?.dash, '💨');
+}
+
+/** URL of a spell's icon for the WoW action bar: its Warcraft III icon, else its WoW icon. */
+export function spellIconUrl(id: string): string | null {
+  return wc3IconUrl(WC3_SPELL_ICONS[id]) ?? wowIcon(id);
 }
