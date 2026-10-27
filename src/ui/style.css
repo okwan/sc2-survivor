@@ -147,6 +147,9 @@ kbd {
 .hero-pick.sel { border-color: var(--accent); box-shadow: 0 0 16px -6px var(--accent); }
 .hero-pick.locked { opacity: 0.5; cursor: not-allowed; }
 .hero-pick.locked b { color: var(--muted); }
+.hero-pick .wc3-icon { width: 40px; height: 40px; border: 1px solid var(--line); image-rendering: auto; }
+.hero-pick.locked .wc3-icon { filter: grayscale(1); }
+.race-card .wc3-portrait { width: 64px; height: 64px; border: 2px solid var(--line); box-shadow: 0 0 12px -4px var(--race); }
 .accent { color: var(--accent); }
 .achievements { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
 .ach { display: flex; gap: 10px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); opacity: 0.55; font-size: 13px; }

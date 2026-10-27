@@ -42,6 +42,7 @@ jobs:
           CHROME_PATH: /usr/bin/google-chrome
           WC3_ARCHIVE_URL: ${{ vars.WC3_ARCHIVE_URL }}
           WC3_PREVIEW: archmage-walk,archmage-attack
+          WC3_LIST_ICONS: 1
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:

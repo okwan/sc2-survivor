@@ -9,6 +9,7 @@ import { currentHero, save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { applyBwChrome } from './bw/ui';
+import { initWc3, loadWc3Hero, wc3HeroIconUrl } from './wc3/sprites';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -27,7 +28,7 @@ async function boot() {
   });
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
-  await initBw();
+  await Promise.all([initBw(), initWc3()]);
   applyBwChrome();
   prefetchTerrain(ZONES.map((z) => z.id));
   setVolume(save.settings.volume);
@@ -82,6 +83,15 @@ async function boot() {
       keyHandler = fn;
     },
     heroPreview(race) {
+      // the hero's own Warcraft III portrait icon when the site ships one
+      const icon = wc3HeroIconUrl(currentHero(race).art);
+      if (icon) {
+        const img = document.createElement('img');
+        img.src = icon;
+        img.className = 'wc3-portrait';
+        img.alt = '';
+        return img;
+      }
       const bw = bwSprite(currentHero(race).sprite) ?? bwSprite(`hero:${race}`);
       let cv = bw ? undefined : previews.get(race);
       if (!cv) {
@@ -113,7 +123,7 @@ async function boot() {
       // the race's three battle themes, starting at a random one
       const first = Math.floor(Math.random() * 3);
       playMusic([0, 1, 2].map((i) => `${race}${((first + i) % 3) + 1}`));
-      await ensureZoneFiles(zone.id);
+      await Promise.all([ensureZoneFiles(zone.id), loadWc3Hero(currentHero(race).art)]);
       ui.innerHTML = '';
       dialogs = [];
       dialogOpen = false;

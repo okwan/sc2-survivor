@@ -59,9 +59,9 @@ export const LEGENDARY_EFFECTS: Record<LegendaryEffect, string> = {
 const SLOT_EFFECT: Record<GearSlot, LegendaryEffect> = { weapon: 'slayer', armor: 'bulwark', module: 'twincast', relic: 'harvest' };
 
 const LEGENDARY_NAMES: Record<RaceId, Record<GearSlot, string>> = {
-  terran: { weapon: 'Raynor\'s Penetrator', armor: 'Tychus\' Juggernaut Suit', module: 'Swann\'s Overclocked Core', relic: 'Hyperion Command Key' },
-  zerg: { weapon: 'Kerrigan\'s Talon', armor: 'Ouros Carapace', module: 'Abathur\'s Sequencer', relic: 'Overmind Fragment' },
-  protoss: { weapon: 'Zeratul\'s Warp Blade', armor: 'Fenix\'s Dragoon Shell', module: 'Artanis\' Khaydarin Amulet', relic: 'Xel\'Naga Keystone' },
+  terran: { weapon: 'Ashbringer', armor: 'Crown of Kings', module: 'Kelen\'s Dagger of Escape', relic: 'Orb of Lightning' },
+  zerg: { weapon: 'Frostmourne', armor: 'Helm of Domination', module: 'Book of the Dead', relic: 'Skull of Gul\'dan' },
+  protoss: { weapon: 'Gorehowl', armor: 'Doomhammer', module: 'Drum of War', relic: 'Eye of Sargeras' },
 };
 
 /** Chance that a Legendary drop is one of the named, effect-bearing ones. */
@@ -76,22 +76,22 @@ const GEAR_POOL: Record<GearSlot, [StatKey, number][]> = {
 
 const GEAR_NAMES: Record<RaceId, Record<GearSlot, string[]>> = {
   terran: {
-    weapon: ['C-14 Rifle Mod', 'Impaler Scope', 'Hellfire Igniter', 'Hammer Securities Barrel'],
-    armor: ['CMC Powered Plating', 'Neosteel Frame', 'Infernal Suit', 'Juggernaut Plating'],
-    module: ['Orbital Uplink', 'Targeting Computer', 'Stim Injector', 'Vanadium Core'],
-    relic: ['Confederate Dog Tag', 'Umojan Data Core', 'Moebius Dossier', 'Artifact Shard'],
+    weapon: ['Claws of Attack', 'Staff of Silence', 'Hammer of Strength', 'Arcanite Reaper'],
+    armor: ['Ring of Protection', 'Plate of Lordaeron', 'Robe of the Magi', 'Thorium Breastplate'],
+    module: ['Boots of Speed', 'Ring of Regeneration', 'Mantle of Intelligence', 'Pendant of Mana'],
+    relic: ['Tome of Knowledge', 'Scroll of the Kirin Tor', 'Gem of True Seeing', 'Medallion of Courage'],
   },
   zerg: {
-    weapon: ['Grooved Spine Sac', 'Acid Gland', 'Monarch Blades', 'Tyrannozor Talon'],
-    armor: ['Chitin Shell', 'Ultralisk Carapace', 'Regenerative Hide', 'Aberration Plates'],
-    module: ['Psionic Link Node', 'Evolution Chamber Strand', 'Larval Sac', 'Overmind Shard'],
-    relic: ['Brood Essence', 'Cerebrate Husk', 'Primal Essence', 'Zerus Bone Idol'],
+    weapon: ['Orb of Corruption', 'Runed Bracers', 'Rod of Necromancy', 'Rune Blade'],
+    armor: ['Bone Armor', 'Cloak of Shadows', 'Necromancer Robes', 'Death Knight Pauldrons'],
+    module: ['Unholy Talisman', 'Sacrificial Skull', 'Rotting Heart', 'Lich Phylactery'],
+    relic: ['Book of the Dead', 'Skull of the Cult', 'Shard of the Frozen Throne', 'Saronite Idol'],
   },
   protoss: {
-    weapon: ['Khaydarin Focus', 'Warp Blade Emitter', 'Phase Disruptor', 'Solarite Lens'],
-    armor: ['Plasma Shell', 'Templar Vestments', 'Forged Khalai Plate', 'Purifier Chassis'],
-    module: ['Khaydarin Amulet', 'Xel\'Naga Relic', 'Nexus Crystal', 'Uraj Fragment'],
-    relic: ['Templar Archive', 'Shakuran Moonstone', 'Khalis Fragment', 'Keystone Sliver'],
+    weapon: ['Orb of Fire', 'Searing Blade', 'Troll Throwing Axe', 'Tauren Totem'],
+    armor: ['Spiked Pauldrons', 'Wolf Rider Cloak', 'Kodo Hide Vest', 'Grunt\'s Mail'],
+    module: ['Talisman of the Wild', 'Spirit Beads', 'Shaman Claws', 'Voodoo Fetish'],
+    relic: ['Orb of the Ancestors', 'Demon Blood', 'Horn of Cenarius', 'Totem of the Earthmother'],
   },
 };
 

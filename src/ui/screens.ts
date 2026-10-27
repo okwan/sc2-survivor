@@ -9,6 +9,7 @@ import { MAX_MUTATORS, MUTATORS, MUTATOR_BY_ID } from '../data/mutators';
 import { ZONES, ZONE_BY_ID } from '../data/enemies';
 import { GEAR_SLOTS, LEGENDARY_EFFECTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
+import { wc3HeroIconUrl } from '../wc3/sprites';
 import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
@@ -23,7 +24,7 @@ export interface Shell {
   ui: HTMLElement;
   startRun(race: RaceId, zoneId: string, daily?: DailyDef): void | Promise<void>;
   quitRun(): void;
-  heroPreview(race: RaceId): HTMLCanvasElement | null;
+  heroPreview(race: RaceId): HTMLElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;
   texture?: Texture;
 }
@@ -93,7 +94,7 @@ export function showMenu(shell: Shell) {
         ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
         : 'Right-click or WASD to move · spells cast automatically · F / Space to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
     }</div>
-    <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
+    <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft and Warcraft are trademarks of Blizzard Entertainment.</div>`;
   menu.append(inner);
   shell.ui.append(menu);
 
@@ -129,7 +130,8 @@ export function showMenu(shell: Shell) {
     b.className = 'hero-pick' + (h.id === cur.id ? ' sel' : '') + (open ? '' : ' locked');
     const how = h.unlock ? ACH_BY_ID[h.unlock] : undefined;
     const sp = SPELL_BY_ID[h.startSpell];
-    b.innerHTML = `<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
+    const icon = wc3HeroIconUrl(h.art);
+    b.innerHTML = `${icon ? `<img class="wc3-icon" src="${icon}" alt="">` : ''}<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
     b.onclick = () => {
       if (!open) return;
       save.heroes[race] = h.id;

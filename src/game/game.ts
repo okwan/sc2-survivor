@@ -25,10 +25,12 @@ import type { Input } from './input';
 import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
 import { RACE_UI } from '../bw/ui-files';
 import { castSpell, updateMinions, updatePersistent } from './spells';
+import { wc3AnimLength, wc3Frame, wc3Hero, type Wc3Sprite } from '../wc3/sprites';
 
 const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no real map
 const GRID_HALF = 3600; // half-size of the spatial grid around the player
 const LAIRS = 4;
+const WC3_HERO_SCALE = 1; // pre-rendered sheets are already at Brood War unit size
 const CACHES = 5;
 const GAP = 600; // closest two landmarks may be
 const LANDMARK_FAR = 3200; // landmarks farther than this from the player move closer
@@ -154,6 +156,9 @@ export class Game {
   private ovLine = new SpritePass(this.layers.overlay, () => Texture.WHITE, 0);
   heroSprite!: Sprite;
   private heroBw: BwSprite | null = null;
+  /** Warcraft III hero sheets, when the site ships them; otherwise the Brood War sprite above. */
+  private heroWc3: Wc3Sprite | null = null;
+  private castAt = -99;
   private heroAngle = 0;
   barrierSprite!: Sprite;
 
@@ -415,7 +420,8 @@ export class Game {
     shadow.scale.set(0.9);
     this.layers.shadows.addChild(shadow);
     this.heroSprite = new Sprite(heroTexture(this.race.id));
-    this.heroBw = bwSprite(this.hero.sprite) ?? bwSprite(`hero:${this.race.id}`) ?? null;
+    this.heroWc3 = wc3Hero(this.hero.art);
+    this.heroBw = this.heroWc3 ? null : (bwSprite(this.hero.sprite) ?? bwSprite(`hero:${this.race.id}`) ?? null);
     this.heroSprite.anchor.set(0.5);
     this.heroSprite.scale.set(1.25);
     this.layers.units.addChild(this.heroSprite);
@@ -1069,11 +1075,11 @@ export class Game {
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
         ...[
-          [6, 'Napalm burn', bwIcon('napalm', '🔥')],
-          [SLOT_NUKE, 'Tactical Nuke', bwIcon('nuke', '☢️')],
-          [SLOT_FEEDBACK, 'Feedback', bwIcon('feedback', '💫')],
+          [6, 'Immolation burn', bwIcon('napalm', '🔥')],
+          [SLOT_NUKE, 'Avatar', bwIcon('nuke', '☢️')],
+          [SLOT_FEEDBACK, 'Ancestral Wrath', bwIcon('feedback', '💫')],
           [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
-          [SLOT_RACIAL, 'Orbital Strike', '🛰️'],
+          [SLOT_RACIAL, 'Flame Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
     });
@@ -1740,7 +1746,7 @@ export class Game {
         for (let k = 0; k < 6; k++) {
           const a = Math.random() * Math.PI * 2;
           const d = k === 0 ? 0 : 90 + Math.random() * 280;
-          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 100, 1.2, 14 * sc, 'Psionic Storm', true, undefined, 0x9a7cff);
+          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 100, 1.2, 14 * sc, 'Earthquake', true, undefined, 0x9a7cff);
         }
         toast('Psionic storms rain down! Lure enemies into them.', '#b48cff');
         break;
@@ -1899,6 +1905,8 @@ export class Game {
       if (sp.timer <= 0) {
         const ok = castSpell(this, sp);
         sp.timer = ok ? sp.stats.cooldown : 0.15;
+        // a new swing starts only once the last one has played out
+        if (ok && this.heroWc3 && this.time - this.castAt > wc3AnimLength(this.heroWc3, 'attack')) this.castAt = this.time;
         if (ok && this.flags.has('echo') && Math.random() < 0.15) this.timers.push({ at: this.time + 0.15, fn: () => castSpell(this, sp) });
         if (ok && this.gearFx.has('twincast') && ++this.twinCount % 4 === 0) this.timers.push({ at: this.time + 0.2, fn: () => castSpell(this, sp) });
       }
@@ -2680,7 +2688,16 @@ export class Game {
     const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0 || !!this.moveTarget;
     this.heroAngle = angleLerpTo(this.heroAngle, p.facing, damp(21, dt));
     const bob = moving && !this.paused ? 1 + Math.sin(this.time * 18) * 0.04 : 1;
-    if (this.heroBw) {
+    if (this.heroWc3) {
+      // walk while moving; standing still, swing at whatever the spells just hit
+      const w = this.heroWc3;
+      const swing = this.time - this.castAt < wc3AnimLength(w, 'attack');
+      if (moving && !this.paused) hs.texture = wc3Frame(w, 'walk', this.time, this.heroAngle);
+      else if (swing) hs.texture = wc3Frame(w, 'attack', this.time - this.castAt, this.heroAngle, false);
+      else hs.texture = wc3Frame(w, 'stand', this.time, this.heroAngle);
+      hs.rotation = 0;
+      hs.scale.set(WC3_HERO_SCALE);
+    } else if (this.heroBw) {
       orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1, moving && !this.paused ? walkFrame(this.heroBw, this.time) : 0);
       if (!this.heroBw.walk) hs.scale.y *= 1 / bob;
     } else {

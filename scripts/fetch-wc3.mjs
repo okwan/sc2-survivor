@@ -144,6 +144,12 @@ async function fillCache() {
       if (near.length) console.warn(`fetch-wc3:   ${p} -> maybe ${near.join(' | ')}`);
     }
   }
+  if (process.env.WC3_LIST_ICONS) {
+    // handy when picking ability and item icons for src/wc3/*.ts
+    const list = new TextDecoder().decode(read('(listfile)') ?? new Uint8Array());
+    const btn = [...new Set(list.split(/\r?\n/).filter((l) => /^ReplaceableTextures\\CommandButtons\\BTN/i.test(l)).map((l) => l.split('\\').pop().replace(/\.blp$/i, '')))];
+    for (let i = 0; i < btn.length; i += 40) console.log(`fetch-wc3: icons ${btn.slice(i, i + 40).join(' ')}`);
+  }
   for (const a of archives) a.close();
 }
 
