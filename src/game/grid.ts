@@ -6,8 +6,10 @@ export class SpatialGrid {
   readonly cell: number;
   readonly cols: number;
   readonly rows: number;
-  readonly minX: number;
-  readonly minY: number;
+  minX: number;
+  minY: number;
+  private halfW: number;
+  private halfH: number;
   private head: Int32Array;
   private next: Int32Array;
 
@@ -17,12 +19,21 @@ export class SpatialGrid {
     this.minY = minY;
     this.cols = Math.ceil(width / cell);
     this.rows = Math.ceil(height / cell);
+    this.halfW = width / 2;
+    this.halfH = height / 2;
     this.head = new Int32Array(this.cols * this.rows).fill(-1);
     this.next = new Int32Array(capacity).fill(-1);
   }
 
   clear() {
     this.head.fill(-1);
+  }
+
+  /** Clears the grid and moves it so it is centred on (x, y): the world has no edge, the grid does. */
+  recenter(x: number, y: number) {
+    this.minX = x - this.halfW;
+    this.minY = y - this.halfH;
+    this.clear();
   }
 
   private cellIndex(x: number, y: number): number {

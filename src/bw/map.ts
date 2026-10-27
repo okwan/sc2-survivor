@@ -5,7 +5,8 @@ import { drawMegatile, parseTileset, type Tileset } from './formats';
  * Real StarCraft scenarios as battlefields. scripts/fetch-bw.mjs turns each zone's campaign map
  * into bw/maps/<zone>.json: the megatile under every 32x32 tile (MTXM resolved through the CV5),
  * the doodad sprites (THG2), mineral fields, geysers and start locations. The ground is drawn
- * here in chunks around the camera so a 192x192 map never needs one giant texture.
+ * here in chunks around the camera so a 192x192 map never needs one giant texture. The map
+ * repeats in every direction, so the battlefield has no edge.
  */
 
 export interface BwMap {
@@ -69,7 +70,7 @@ export function mapStart(m: BwMap): [number, number] {
 const CH = 16; // megatiles per chunk side (512 px)
 const MAX_CHUNKS = 64;
 
-/** Ground of one map, built lazily in 512 px chunks as the camera moves. */
+/** Ground of one map, repeated endlessly, built lazily in 512 px chunks as the camera moves. */
 export class MapGround {
   readonly container = new Container();
   private ts: Tileset;
@@ -88,15 +89,18 @@ export class MapGround {
 
   private build(cx: number, cy: number): Sprite {
     const m = this.map;
-    const tw = Math.min(CH, m.w - cx * CH);
-    const th = Math.min(CH, m.h - cy * CH);
     const cv = document.createElement('canvas');
-    cv.width = tw * 32;
-    cv.height = th * 32;
+    cv.width = CH * 32;
+    cv.height = CH * 32;
     const ctx = cv.getContext('2d')!;
     const img = ctx.createImageData(cv.width, cv.height);
-    for (let y = 0; y < th; y++)
-      for (let x = 0; x < tw; x++) drawMegatile(this.ts, m.tiles[(cy * CH + y) * m.w + cx * CH + x], img.data, cv.width, x * 32, y * 32);
+    for (let y = 0; y < CH; y++) {
+      const ty = (((cy * CH + y) % m.h) + m.h) % m.h;
+      for (let x = 0; x < CH; x++) {
+        const tx = (((cx * CH + x) % m.w) + m.w) % m.w;
+        drawMegatile(this.ts, m.tiles[ty * m.w + tx], img.data, cv.width, x * 32, y * 32);
+      }
+    }
     ctx.putImageData(img, 0, 0);
     const tex = Texture.from(cv);
     tex.source.scaleMode = 'nearest';
@@ -112,17 +116,16 @@ export class MapGround {
    */
   update(x0: number, y0: number, x1: number, y1: number, budget = 2) {
     this.frame++;
-    const m = this.map;
     const S = CH * 32;
-    const ca = Math.max(0, Math.floor(x0 / S) - 1);
-    const cb = Math.min(Math.ceil(m.w / CH) - 1, Math.floor(x1 / S) + 1);
-    const ra = Math.max(0, Math.floor(y0 / S) - 1);
-    const rb = Math.min(Math.ceil(m.h / CH) - 1, Math.floor(y1 / S) + 1);
+    const ca = Math.floor(x0 / S) - 1;
+    const cb = Math.floor(x1 / S) + 1;
+    const ra = Math.floor(y0 / S) - 1;
+    const rb = Math.floor(y1 / S) + 1;
     const vis0 = [Math.floor(x0 / S), Math.floor(x1 / S), Math.floor(y0 / S), Math.floor(y1 / S)];
     for (let pass = 0; pass < 2; pass++)
       for (let cy = ra; cy <= rb; cy++)
         for (let cx = ca; cx <= cb; cx++) {
-          const key = cy * 1024 + cx;
+          const key = (cy + 32768) * 65536 + cx + 32768;
           const c = this.chunks.get(key);
           if (c) {
             c.used = this.frame;

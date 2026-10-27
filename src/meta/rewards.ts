@@ -40,7 +40,8 @@ export function grantRewards(r: RunResult): Rewards {
   rs.talentXp += total;
   rs.runs++;
   // at least 1 vespene for any run past a minute, so the rewards loop starts on the first try
-  const vespene = Math.max(mins >= 1 ? 1 : 0, Math.round((r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 3)) * r.difficulty.rewards * (1 + mb)));
+  // minerals picked up in the run are banked as vespene, like Vampire Survivors' gold
+  const vespene = Math.max(mins >= 1 ? 1 : 0, Math.round((r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 3) + Math.floor((r.minerals ?? 0) / 40)) * r.difficulty.rewards * (1 + mb)));
   save.vespene += vespene;
   let unlocked: string | null = null;
   const zi = ZONES.findIndex((z) => z.id === r.zone.id);
