@@ -270,3 +270,55 @@ export const MIXED_ROSTER: { from: number; pool: [string, number][] }[] = [
 ];
 
 export const ZONE_BY_ID: Record<string, ZoneDef> = Object.fromEntries(ZONES.map((z) => [z.id, z]));
+
+/**
+ * Azeroth Survivors' tuned enemy ladder (The Barrens, weakest first): health, hit and experience per
+ * tier. Every StarCraft unit takes the numbers at its own place on it, ordered by its base health, so a
+ * zergling is always fodder and a Battlecruiser always a wall; the run's clock only adds a little on
+ * top. What makes the late game hard is which tiers are spawning, not a multiplier.
+ */
+const LADDER: [number, number, number][] = [
+  [8, 2, 1], [10, 2, 1], [16, 3, 2], [18, 4, 2], [22, 8, 2], [26, 8, 3], [36, 10, 3], [40, 11, 3], [34, 10, 3], [44, 12, 4],
+  [70, 14, 5], [55, 12, 4], [60, 13, 4], [85, 16, 5], [75, 15, 5], [90, 16, 6], [95, 18, 6], [120, 20, 7], [150, 22, 8], [220, 28, 12],
+  [160, 24, 8], [180, 26, 10], [90, 18, 5], [240, 30, 12], [200, 30, 10], [280, 34, 14], [300, 36, 14], [420, 42, 24], [380, 44, 22], [360, 40, 20],
+];
+
+export interface LadderStats {
+  hp: number;
+  damage: number;
+  xp: number;
+}
+
+/** Every unit's ladder numbers, from its rank among all units by base health (ties by experience). */
+export const LADDER_STATS: Record<string, LadderStats> = (() => {
+  let peak: [number, number, number] = [0, 0, 0];
+  const rungs = LADDER.map((r) => (peak = [Math.max(peak[0], r[0]), Math.max(peak[1], r[1]), Math.max(peak[2], r[2])]));
+  const order = Object.values(ENEMIES).sort((a, b) => a.hp - b.hp || a.xp - b.xp);
+  const top = rungs.length - 1;
+  const out: Record<string, LadderStats> = {};
+  order.forEach((def, i) => {
+    const t = (i / (order.length - 1)) * top;
+    const lo = rungs[Math.floor(t)];
+    const hi = rungs[Math.ceil(t)];
+    const k = t - Math.floor(t);
+    const mix = (j: number) => Math.round(lo[j] + (hi[j] - lo[j]) * k);
+    // a baneling's one burst and a marine's many shots hit differently from a melee swing
+    const dmgK = def.behavior === 'exploder' ? 1.5 : def.behavior === 'ranged' ? 0.7 : 1;
+    out[def.id] = { hp: mix(0), damage: Math.max(1, Math.round(mix(1) * dmgK)), xp: mix(2) };
+  });
+  return out;
+})();
+
+/** Units weakest first, for a sliding window of tiers. */
+export function ladderOrder(ids: Iterable<string>): string[] {
+  return [...new Set(ids)].filter((id) => LADDER_STATS[id]).sort((a, b) => LADDER_STATS[a].hp - LADDER_STATS[b].hp || LADDER_STATS[a].xp - LADDER_STATS[b].xp);
+}
+
+/** Azeroth Survivors' wave window: the run is 30 steps, and three neighbouring tiers spawn at a time. */
+export function ladderWindow(order: string[], progress: number): string[] {
+  if (order.length <= 3) return order;
+  const step = Math.floor(progress * 30);
+  const span = order.length - 3;
+  const lo = Math.min(span, Math.floor((Math.max(0, step - 1) * span) / 27));
+  return order.slice(lo, lo + 3);
+}
