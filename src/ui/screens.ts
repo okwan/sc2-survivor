@@ -10,7 +10,7 @@ import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
 import { setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
-import type { Game, RunResult } from '../game/game';
+import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
 import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
@@ -94,7 +94,7 @@ export function showMenu(shell: Shell) {
     b.className = 'race-card' + (r === race ? ' sel' : '');
     b.style.setProperty('--race', hex(d.color === 0x8a3fb0 ? 0xc06ae0 : d.color === 0x3f7fd6 ? 0x5ca0ff : d.color));
     const pts = pointsEarned(r) - pointsSpent(r);
-    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p>`;
+    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p><p class="racial">${d.active}</p>`;
     const cv = shell.heroPreview(r);
     if (cv) b.querySelector('h2')!.before(cv);
     b.onclick = () => {
@@ -624,6 +624,55 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       showStats = !showStats;
       render();
     }
+  });
+}
+
+/** Supply cache shop: run-only modules for minerals, or a gear requisition for the account. */
+export function showCacheShop(shell: Shell, g: Game, offers: CacheOffer[], gearCost: number, buy: (o: CacheOffer | 'gear' | null) => void, onDone: () => void) {
+  const o = overlay(shell);
+  const close = (choice: CacheOffer | 'gear' | null) => {
+    if (choice === 'gear' && g.player.minerals < gearCost) return;
+    if (choice && choice !== 'gear' && g.player.minerals < choice.price) return;
+    buy(choice);
+    sfx('select');
+    o.remove();
+    onDone();
+  };
+  const box = document.createElement('div');
+  box.className = 'levelup shop';
+  box.innerHTML = `<h2>SUPPLY CACHE</h2><div class="hint">Modules last for this run. You have <b class="minerals">${g.player.minerals} minerals</b>.</div>`;
+  const row = document.createElement('div');
+  row.className = 'cards';
+  offers.forEach((c, i) => {
+    const b = document.createElement('button');
+    const afford = g.player.minerals >= c.price;
+    b.className = 'card' + (c.mod.rarity >= 3 ? ` r${c.mod.rarity}` : '') + (afford ? '' : ' poor');
+    b.style.setProperty('--rc', RARITY_COLORS[c.mod.rarity]);
+    b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.mod.rarity]} module</div><div class="ic">${c.mod.icon}</div><div class="nm">${c.mod.name}</div><ul><li>${c.mod.desc}</li></ul><div class="price">💎 ${c.price}</div>`;
+    b.onclick = () => close(c);
+    row.append(b);
+  });
+  const acts = document.createElement('div');
+  acts.className = 'row';
+  const gb = document.createElement('button');
+  gb.className = 'btn small';
+  gb.innerHTML = `<kbd>G</kbd> Requisition gear (💎 ${gearCost})`;
+  gb.title = 'A random piece of gear for this race, kept after the run';
+  gb.disabled = g.player.minerals < gearCost;
+  gb.onclick = () => close('gear');
+  const lb = document.createElement('button');
+  lb.className = 'btn small';
+  lb.innerHTML = '<kbd>Esc</kbd> Leave';
+  lb.onclick = () => close(null);
+  acts.append(gb, lb);
+  box.append(row, acts);
+  o.append(box);
+  shell.setKeyHandler((k) => {
+    if (k.startsWith('Digit')) {
+      const c = offers[parseInt(k.slice(5)) - 1];
+      if (c) close(c);
+    } else if (k === 'KeyG') close('gear');
+    else if (k === 'Escape') close(null);
   });
 }
 

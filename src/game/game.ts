@@ -1,5 +1,7 @@
 import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
+import { AFFIXES, AFFIX_BY_ID, type AffixId } from '../data/affixes';
 import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
+import { MODULES, modulePrice, type ModuleDef } from '../data/modules';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
@@ -27,6 +29,7 @@ const DASH_UNLOCK = 5;
 const SLOT_NUKE = 7;
 const SLOT_FEEDBACK = 8;
 const SLOT_DASH = 9;
+const SLOT_RACIAL = 10;
 
 export interface RunResult {
   won: boolean;
@@ -49,6 +52,13 @@ export interface GameHooks {
   victory: () => void;
   ended: (r: RunResult) => void;
   toast: (msg: string, color?: string) => void;
+  /** Walking into a supply cache opens its shop. */
+  cacheShop: (offers: CacheOffer[], gearCost: number, buy: (o: CacheOffer | 'gear' | null) => void) => void;
+}
+
+export interface CacheOffer {
+  mod: ModuleDef;
+  price: number;
 }
 
 interface Player {
@@ -177,11 +187,10 @@ export class Game {
 
   private spawnAcc = 0;
   private nextBoss = 0;
-  private nextElite = 90;
+  private nextElite = 120; // later zones' elites (archons, hybrids) were killing fresh heroes at 1:30
   private nextSurge = 60;
   private nextMagnet = 75;
   private cacheCost = -1; // set on first use: starts higher in later zones
-  private cacheMsgT = 0;
   private endlessBossT = 120;
   private endlessIdx = 0;
   /** Delayed actions on game time, so they wait while the game is paused. */
@@ -192,6 +201,10 @@ export class Game {
   lastHitBy = '';
   private edgeWarnAt = 0;
   probe: Minion | null = null;
+  /** Active racial timers: next Orbital Strike / Guardian Shield, Burrow ready time, Guardian Shield left. */
+  racialAt = 30;
+  guardT = 0;
+  private reactiveAt = 0;
   private frameMs = 16;
 
   constructor(app: Application, input: Input, raceId: RaceId, zone: ZoneDef, hooks: GameHooks) {
@@ -226,8 +239,8 @@ export class Game {
     // later zones start you with a few free level-ups so the first minute isn't a stat check
     const zi = ZONES.findIndex((x) => x.id === z.id);
     if (zi > 0) {
-      this.player.level += zi * 2;
-      this.pendingLevels += zi * 2;
+      this.player.level += zi * 3;
+      this.pendingLevels += zi * 3;
     }
     // a capstone's spell comes on top of the race's own starter, never instead of it
     this.learnSpell(this.race.startSpell, 0);
@@ -442,7 +455,8 @@ export class Game {
   /** Enemy health and damage multipliers at minute m. */
   private enemyScale(m: number) {
     // harder zones ramp up to their full tier over the first ~70% of the run instead of starting there
-    const ramp = Math.min(1, 0.2 + (0.8 * m) / (this.zone.minutes * 0.7));
+    // (starting at 20% of the tier still killed fresh heroes on Aiur and Ulnar inside two minutes)
+    const ramp = Math.min(1, 0.05 + (0.95 * m) / (this.zone.minutes * 0.7));
     const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
     return { hp: tier * (1 + m * 0.16 + m * m * 0.012) * this.diff.hp, dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) * this.diff.dmg };
   }
@@ -462,6 +476,7 @@ export class Game {
         uid: 0, idx: -1, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
         burnDps: 0, burnTime: 0, burnTick: 0, contactCd: 0, shotTimer: 0, elite: false, boss: null, lair: null, asleep: false,
         hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0, bw: null, bwScale: 1,
+        affixes: [], shieldHp: 0, baseTint: 0xffffff,
       };
     }
     e.uid = this.uid++;
@@ -480,6 +495,9 @@ export class Game {
     e.charge = 0;
     e.windup = 0;
     e.hitStamp.fill(-99);
+    e.affixes.length = 0;
+    e.shieldHp = 0;
+    e.baseTint = opts.elite ? 0xffe9a0 : 0xffffff;
     if (opts.boss) {
       const b = opts.boss;
       // final bosses were long, low-threat fights; they have less health and attack more often instead
@@ -495,7 +513,7 @@ export class Game {
     } else {
       e.maxHp = def.hp * hpScale * (opts.hpMult ?? 1);
       e.speed = def.speed * (0.92 + Math.random() * 0.16);
-      e.damage = def.damage * dmgScale * (opts.elite ? 1.2 : 1);
+      e.damage = def.damage * dmgScale;
       e.radius = def.radius * (opts.scale ?? 1);
       e.mass = (def.mass ?? 1) * (opts.elite ? 4 : 1);
       e.xp = def.xp * (opts.elite ? 12 : 1);
@@ -512,7 +530,7 @@ export class Game {
       spr.texture = e.bw.frames[0];
     }
     spr.scale.set(opts.boss ? 1 : opts.scale ?? 1);
-    spr.tint = opts.elite ? 0xffe9a0 : 0xffffff;
+    spr.tint = e.baseTint;
     spr.position.set(x, y);
     if (!spr.parent) this.layers.units.addChild(spr);
     e.idx = this.enemyCount;
@@ -545,7 +563,7 @@ export class Game {
     for (let k = 0; k < n; k++) {
       const e = this.enemies[useGrid ? this.nbuf[k] : k];
       if (!e) continue;
-      if (e.asleep || e.hp <= 0) continue;
+      if (e.asleep || e.hp <= 0 || !this.revealed(e)) continue;
       if (exclude && exclude.has(e.uid)) continue;
       const dx = e.x - x;
       const dy = e.y - y;
@@ -578,7 +596,7 @@ export class Game {
     const md = maxDist * maxDist;
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
-      if (e.asleep || e.hp <= 0) continue;
+      if (e.asleep || e.hp <= 0 || !this.revealed(e)) continue;
       const dx = e.x - x;
       const dy = e.y - y;
       const d = dx * dx + dy * dy;
@@ -613,7 +631,7 @@ export class Game {
     const r2 = r * r;
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
-      if (e.asleep) continue;
+      if (e.asleep || !this.revealed(e)) continue;
       const dx = e.x - x;
       const dy = e.y - y;
       if (dx * dx + dy * dy < r2) cands.push(e);
@@ -677,6 +695,15 @@ export class Game {
       dmg *= this.stats.critMult;
       crit = true;
     }
+    if (e.shieldHp > 0) {
+      const a = Math.min(e.shieldHp, dmg);
+      e.shieldHp -= a;
+      dmg -= a;
+      if (e.shieldHp <= 0) {
+        this.floatText(e.x, e.y - e.radius - 14, 'SHIELD DOWN', 0x8ad8ff, 0.5);
+        if (e.baseTint === AFFIX_BY_ID.shielded.color) e.baseTint = 0xffe9a0;
+      }
+    }
     e.hp -= dmg;
     e.flash = 0.08;
     if (slot >= 0 && slot < 6) {
@@ -712,8 +739,11 @@ export class Game {
     const i = e.idx;
     if (i < 0 || i >= this.enemyCount || this.enemies[i] !== e) return;
     this.player.kills++;
-    this.dropGem(e.x, e.y, e.xp);
-    if (Math.random() < (e.elite ? 1 : 0.035)) this.dropPickup('mineral', e.x + 8, e.y, Math.ceil((e.elite ? 25 : 1 + Math.random() * 3) * this.stats.minerals));
+    if (this.flags.has('leech')) this.heal(0.5);
+    const affixBonus = 1 + e.affixes.length * 0.5;
+    this.dropGem(e.x, e.y, e.xp * affixBonus);
+    if (e.affixes.length) this.affixDeath(e);
+    if (Math.random() < (e.elite ? 1 : 0.035)) this.dropPickup('mineral', e.x + 8, e.y, Math.ceil((e.elite ? 25 * affixBonus : 1 + Math.random() * 3) * this.stats.minerals));
     if (Math.random() < 0.0025) this.dropPickup('medkit', e.x, e.y, 0);
     if (Math.random() < 0.0012) this.dropPickup('magnet', e.x, e.y, 0);
     const big = e.elite || !!e.boss;
@@ -776,6 +806,52 @@ export class Game {
     if (e.lair) this.hooks.toast(`${e.def.name} guardian awakens! Kill it for gear, or outrun it.`, '#ff8040');
   }
 
+  /** Gives an elite 1-2 random modifiers and announces it. */
+  private rollAffixes(e: Enemy, n: number) {
+    const pool = AFFIXES.slice();
+    for (let i = 0; i < n && pool.length; i++) {
+      const a = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+      e.affixes.push(a.id);
+      if (a.id === 'shielded') e.shieldHp = e.maxHp * 0.5;
+      if (a.id === 'hasted') e.speed *= 1.6;
+    }
+    e.baseTint = AFFIX_BY_ID[e.affixes[0]].color;
+    e.sprite.tint = e.baseTint;
+    const names = e.affixes.map((id) => AFFIX_BY_ID[id].name).join(' ');
+    this.hooks.toast(`${names} ${e.def.name} incoming! ${e.affixes.map((id) => AFFIX_BY_ID[id].desc).join(' ')}`, '#ffd34d');
+  }
+
+  private affixDeath(e: Enemy) {
+    for (const id of e.affixes as AffixId[]) {
+      if (id === 'splitter') {
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2;
+          this.spawnEnemy(ENEMIES.broodling, e.x + Math.cos(a) * 30, e.y + Math.sin(a) * 30);
+        }
+      } else if (id === 'volatile') {
+        const x = e.x;
+        const y = e.y;
+        const dmg = e.damage * 1.5;
+        const name = e.def.name;
+        this.telegraphs.push({
+          kind: 'circle', x, y, r: 110, dx: 0, dy: 0, len: 0, t: 0, max: 0.9, damage: dmg, friendly: false,
+          onDone: () => {
+            this.addFx(fx.soft(), x, y, 0x9cff3c, 0.5, 1.9, 0.4, 0.9);
+            if (hyp(this.player.x - x, this.player.y - y) < 110) this.damagePlayer(dmg, `Volatile ${name}`);
+          },
+        });
+      }
+    }
+  }
+
+  /** Cloaked elites can only be targeted near the hero (or always, if they're a boss). */
+  revealed(e: Enemy): boolean {
+    if (!e.affixes.length || !e.affixes.includes('cloaked')) return true;
+    const dx = e.x - this.player.x;
+    const dy = e.y - this.player.y;
+    return dx * dx + dy * dy < 220 * 220;
+  }
+
   private banelingBlast(e: Enemy) {
     const p = this.player;
     this.addFx(fx.soft(), e.x, e.y, 0x9cff3c, 0.4, 1.6, 0.35, 0.9);
@@ -792,6 +868,7 @@ export class Game {
       return;
     }
     let dmg = Math.max(amount * 0.25, amount - this.stats.armor);
+    if (this.guardT > 0) dmg *= 0.6;
     p.lastHit = this.time;
     if (p.barrier > 0) {
       const a = Math.min(p.barrier, dmg);
@@ -817,6 +894,10 @@ export class Game {
     }
     if (dmg > 0) {
       p.hp -= dmg;
+      if (this.flags.has('reactive') && this.time >= this.reactiveAt && p.hp > 0) {
+        this.reactiveAt = this.time + 10;
+        p.invuln = 1;
+      }
       sfx('hurt');
       this.heroSprite.tint = 0xff6060;
       if (save.settings.screenShake) this.shake(3);
@@ -830,6 +911,14 @@ export class Game {
 
   private onDeath() {
     const p = this.player;
+    if (this.race.id === 'zerg' && this.time >= this.racialAt) {
+      this.racialAt = this.time + 90;
+      p.hp = this.stats.maxHp * 0.35;
+      p.invuln = 1.5;
+      this.addFx(fx.soft(), p.x, p.y, 0x8a6a3a, 0.4, 1.6, 0.5, 0.9);
+      this.floatText(p.x, p.y - 40, 'BURROW', 0xc6ff5c, 0.7);
+      return;
+    }
     if (p.revivesUsed < this.stats.revives) {
       p.revivesUsed++;
       p.hp = this.stats.maxHp * 0.5;
@@ -870,6 +959,7 @@ export class Game {
           [SLOT_NUKE, 'Tactical Nuke', '☢️'],
           [SLOT_FEEDBACK, 'Feedback', '💫'],
           [SLOT_DASH, this.race.dashName, '💨'],
+          [SLOT_RACIAL, 'Orbital Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
     });
@@ -1325,6 +1415,8 @@ export class Game {
       if (p.barrierTime <= 0) p.barrier = 0;
     }
 
+    this.updateRacial(dt);
+
     // stimpack
     if (this.flags.has('stimpack')) {
       if (p.stimT > 0) {
@@ -1377,6 +1469,7 @@ export class Game {
       if (sp.timer <= 0) {
         const ok = castSpell(this, sp);
         sp.timer = ok ? sp.stats.cooldown : 0.15;
+        if (ok && this.flags.has('echo') && Math.random() < 0.15) this.timers.push({ at: this.time + 0.15, fn: () => castSpell(this, sp) });
       }
     }
     updateMinions(this, dt);
@@ -1415,6 +1508,39 @@ export class Game {
     }
 
     this.render(dt);
+  }
+
+  private updateRacial(dt: number) {
+    const p = this.player;
+    if (this.guardT > 0) this.guardT -= dt;
+    if (this.race.id === 'zerg' || this.time < this.racialAt) return;
+    if (this.race.id === 'protoss') {
+      this.racialAt = this.time + 25;
+      this.guardT = 5;
+      this.floatText(p.x, p.y - 40, 'GUARDIAN SHIELD', 0xffd36a, 0.5);
+      return;
+    }
+    // Terran: Orbital Strike on the densest pack in view
+    const t = this.denseTargets(p.x, p.y, 650, 1)[0];
+    if (!t) return;
+    this.racialAt = this.time + 30;
+    const tx = t.x;
+    const ty = t.y;
+    const r = 170 * this.stats.area;
+    const dmg = (10 + p.level * 1.5) * 9 * this.stats.damage;
+    this.telegraphs.push({
+      kind: 'circle', x: tx, y: ty, r, dx: 0, dy: 0, len: 0, t: 0, max: 0.9, damage: dmg, friendly: true,
+      onDone: () => {
+        this.forEnemiesInRadius(tx, ty, r, (e) => {
+          const a = Math.atan2(e.y - ty, e.x - tx);
+          this.hit(e, dmg, SLOT_RACIAL, { kx: Math.cos(a) * 400, ky: Math.sin(a) * 400, tags: ['explosive'] });
+        });
+        this.addFx(fx.soft(), tx, ty, 0x9fe8ff, 0.6, (r * 2.4) / 128, 0.5, 1);
+        this.addFx(fx.ring(), tx, ty, 0xffffff, 0.2, (r * 2) / 224, 0.4, 1);
+        this.shake(10);
+        sfx('explode');
+      },
+    });
   }
 
   private direct(dt: number) {
@@ -1469,9 +1595,10 @@ export class Game {
     }
     // elites
     if (this.time >= this.nextElite) {
-      this.nextElite += 50;
+      this.nextElite += 60;
       const [x, y] = this.spawnPoint();
-      this.spawnEnemy(ENEMIES[z.elite], x, y, { elite: true, hpMult: 3, scale: 1.35 });
+      const e = this.spawnEnemy(ENEMIES[z.elite], x, y, { elite: true, hpMult: 3, scale: 1.35 });
+      if (e) this.rollAffixes(e, m < 8 ? 1 : 2);
     }
     // surges: a ring of enemies closing in
     if (this.time >= this.nextSurge) {
@@ -1520,7 +1647,7 @@ export class Game {
       if (e.flash > 0) {
         e.flash -= dt;
         // the tint setter does colour work and allocates, so only write it when it changes
-        const tint = e.flash <= 0 ? (e.boss?.enraged ? 0xff7070 : e.elite ? 0xffe9a0 : 0xffffff) : 0xff6666;
+        const tint = e.flash <= 0 ? (e.boss?.enraged ? 0xff7070 : e.baseTint) : 0xff6666;
         if (e.sprite.tint !== tint) e.sprite.tint = tint;
       }
       if (e.burnTime > 0) {
@@ -1546,7 +1673,8 @@ export class Game {
         e.sprite.alpha = 0.75 + Math.sin(this.time * 2) * 0.1;
         continue;
       }
-      e.sprite.alpha = 1;
+      const cloaked = e.affixes.length > 0 && e.affixes.includes('cloaked');
+      e.sprite.alpha = cloaked ? (this.revealed(e) ? 0.75 : 0.3) : 1;
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const d = hyp(dx, dy) || 1;
@@ -1599,7 +1727,7 @@ export class Game {
           if (e.windup > 0) {
             // telegraphed: stand still and shake before charging
             e.windup -= dt;
-            e.sprite.tint = Math.sin(this.time * 40) > 0 ? 0xff9090 : 0xffffff;
+            e.sprite.tint = Math.sin(this.time * 40) > 0 ? 0xff9090 : e.baseTint;
             if (e.windup <= 0) e.charge = 0.6;
           } else if (e.charge > 0) {
             e.charge -= dt;
@@ -1639,6 +1767,7 @@ export class Game {
       if (d < cr && e.contactCd <= 0) {
         // a charger's charge hits once, not on every contact tick
         e.contactCd = e.def.behavior === 'charger' ? 1.2 : 0.6;
+        if (e.affixes.length && e.affixes.includes('vampiric')) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.08);
         this.damagePlayer(e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
       }
       this.grid.insert(i, e.x, e.y);
@@ -1914,7 +2043,6 @@ export class Game {
     }
 
     // supply caches
-    this.cacheMsgT -= dt;
     this.cacheCost = this.cacheCostNow;
     for (const c of this.caches) {
       if (c.opened && c.restockAt !== undefined && this.time >= c.restockAt) {
@@ -1923,22 +2051,64 @@ export class Game {
         c.sprite.alpha = 1;
       }
       if (c.opened) continue;
-      if (Math.abs(c.x - p.x) > 40 || Math.abs(c.y - p.y) > 40) continue;
-      if (p.minerals >= this.cacheCost) {
+      if (Math.abs(c.x - p.x) > 40 || Math.abs(c.y - p.y) > 40) {
+        if (c.shopAt === -1) c.shopAt = 0; // left the cache: it can open again next visit
+        continue;
+      }
+      if (c.shopAt === -1) continue; // still standing on it after closing the shop
+      c.shopAt = -1;
+      this.openCacheShop(c);
+    }
+  }
+
+  /** Supply caches sell run-only modules (Azeroth Survivors' jewelry), or a gear requisition. */
+  private openCacheShop(c: Cache) {
+    const zi = Math.max(0, ZONES.findIndex((z) => z.id === this.zone.id));
+    const owned = new Set(this.modules.map((m) => m.id));
+    const pool = MODULES.filter((m) => !owned.has(m.id));
+    const luck = this.stats.luck + this.diff.luck;
+    const offers: CacheOffer[] = [];
+    while (offers.length < 3 && pool.length) {
+      const w = pool.map((m) => [0, 6, 3.2, 1.4 * (1 + luck), 0.5 * (1 + luck * 2)][m.rarity]);
+      let r = Math.random() * w.reduce((x, y) => x + y, 0);
+      let i = 0;
+      while (i < pool.length - 1 && (r -= w[i]) > 0) i++;
+      const mod = pool.splice(i, 1)[0];
+      offers.push({ mod, price: modulePrice(mod, zi) });
+    }
+    sfx('select');
+    this.paused = true;
+    this.hooks.cacheShop(offers, this.cacheCost, (o) => {
+      const p = this.player;
+      if (o === 'gear') {
+        if (p.minerals < this.cacheCost) return;
         p.minerals -= this.cacheCost;
         // a flat step: the old x1.5 growth left players ending runs with hundreds of unspent minerals
         this.cacheCost += 20;
-        c.opened = true;
-        c.restockAt = this.time + 240;
-        c.sprite.alpha = 0.35;
-        const rar = Math.max(1, rollRarity(this.stats.luck + this.diff.luck + 0.2)) as Rarity;
-        sfx('select');
-        this.hooks.gear(rollGear(this.race.id, rar, this.zone.tier));
-        this.paused = true;
-      } else if (this.cacheMsgT <= 0) {
-        this.cacheMsgT = 1.5;
-        this.hooks.toast(`Supply cache needs ${this.cacheCost} minerals (enemies sometimes drop them)`, '#7ad8ff');
-      }
+        const rar = Math.max(1, rollRarity(luck + 0.2)) as Rarity;
+        this.timers.push({ at: this.time, fn: () => this.hooks.gear(rollGear(this.race.id, rar, this.zone.tier)) });
+      } else if (o) {
+        if (p.minerals < o.price) return;
+        p.minerals -= o.price;
+        this.addModule(o.mod);
+        this.hooks.toast(`${o.mod.name}: ${o.mod.desc}`, '#7ad8ff');
+      } else return;
+      c.opened = true;
+      c.restockAt = this.time + 240;
+      c.sprite.alpha = 0.35;
+    });
+  }
+
+  modules: ModuleDef[] = [];
+
+  addModule(m: ModuleDef) {
+    this.modules.push(m);
+    if (m.flag) this.flags.add(m.flag);
+    if (m.stats) {
+      addMods(this.passiveMods, m.stats);
+      const before = this.stats.maxHp;
+      this.recomputeStats();
+      this.player.hp += Math.max(0, this.stats.maxHp - before);
     }
   }
 
@@ -2010,9 +2180,9 @@ export class Game {
     const sh = (hs as Sprite & { shadow?: Sprite }).shadow!;
     sh.position.set(p.x, p.y + 16);
     const bsp = this.barrierSprite;
-    bsp.visible = p.barrier > 0 || (p.shield > 0 && this.time - p.lastHit < 0.3);
+    bsp.visible = p.barrier > 0 || this.guardT > 0 || (p.shield > 0 && this.time - p.lastHit < 0.3);
     if (bsp.visible) {
-      bsp.tint = p.barrier > 0 ? 0x6ad1ff : 0x4fd2ff;
+      bsp.tint = this.guardT > 0 ? 0xffd36a : p.barrier > 0 ? 0x6ad1ff : 0x4fd2ff;
       bsp.position.set(p.x, p.y);
       bsp.scale.set(0.6 + Math.sin(this.time * 5) * 0.02);
       bsp.alpha = p.barrier > 0 ? 0.5 : 0.35;

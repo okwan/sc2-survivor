@@ -274,6 +274,9 @@ kbd {
 .card:nth-child(4) { animation-delay: 0.15s; }
 @keyframes cardin { from { opacity: 0; transform: translateY(20px); } }
 .card:hover { transform: translateY(-4px); }
+.card.poor { opacity: 0.5; }
+.card .price { position: absolute; left: 0; right: 0; bottom: 12px; font-size: 18px; font-weight: 800; color: #7ad8ff; }
+.shop .card { min-height: 230px; }
 .card.r3 { box-shadow: 0 0 34px -4px var(--rc), inset 0 0 50px -18px var(--rc); }
 .card.r4 { animation: cardin 0.25s backwards, legend 1.4s ease-in-out infinite alternate; }
 @keyframes legend { from { box-shadow: 0 0 26px -4px var(--rc), inset 0 0 50px -18px var(--rc); } to { box-shadow: 0 0 52px 4px var(--rc), inset 0 0 70px -14px var(--rc); } }

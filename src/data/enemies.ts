@@ -27,13 +27,13 @@ export const ENEMIES: Record<string, EnemyDef> = {
   mutalisk: { id: 'mutalisk', name: 'Mutalisk', shape: 'muta', color: 0x6a5acd, hp: 26, speed: 150, damage: 8, radius: 15, xp: 2, behavior: 'chase' },
   ultralisk: { id: 'ultralisk', name: 'Ultralisk', shape: 'ultra', color: 0xa08060, hp: 260, speed: 80, damage: 18, radius: 32, xp: 15, behavior: 'charger', mass: 6 },
   zealot: { id: 'zealot', name: 'Zealot', shape: 'zealot', color: 0xd4a83a, hp: 34, speed: 105, damage: 10, radius: 14, xp: 2, behavior: 'chase' },
-  stalker: { id: 'stalker', name: 'Stalker', shape: 'stalker', color: 0x5a6aa0, hp: 40, speed: 95, damage: 10, radius: 17, xp: 3, behavior: 'ranged', range: 300, shotCd: 2.2, shotSpeed: 320 },
+  stalker: { id: 'stalker', name: 'Stalker', shape: 'stalker', color: 0x5a6aa0, hp: 40, speed: 95, damage: 8, radius: 17, xp: 3, behavior: 'ranged', range: 300, shotCd: 2.2, shotSpeed: 320 },
   archon: { id: 'archon', name: 'Archon', shape: 'archon', color: 0x9ad8ff, hp: 300, speed: 75, damage: 24, radius: 30, xp: 15, behavior: 'chase', mass: 5 },
   marine: { id: 'marine', name: 'Dominion Marine', shape: 'marine', color: 0xa03030, hp: 20, speed: 95, damage: 7, radius: 13, xp: 1, behavior: 'ranged', range: 230, shotCd: 1.8, shotSpeed: 360 },
   firebat: { id: 'firebat', name: 'Firebat', shape: 'firebat', color: 0xd06020, hp: 44, speed: 100, damage: 13, radius: 16, xp: 3, behavior: 'chase', mass: 1.5 },
   siegetank: { id: 'siegetank', name: 'Siege Tank', shape: 'tank', color: 0x707a60, hp: 320, speed: 55, damage: 25, radius: 30, xp: 15, behavior: 'ranged', range: 380, shotCd: 3.4, shotSpeed: 280, mass: 8 },
   hybrid: { id: 'hybrid', name: 'Hybrid Reaver', shape: 'hybrid', color: 0x40ffd0, hp: 380, speed: 85, damage: 22, radius: 34, xp: 20, behavior: 'charger', mass: 7 },
-  hybridling: { id: 'hybridling', name: 'Void Shard', shape: 'hybrid', color: 0x2ad4b0, hp: 30, speed: 125, damage: 10, radius: 13, xp: 2, behavior: 'chase' },
+  hybridling: { id: 'hybridling', name: 'Void Shard', shape: 'hybrid', color: 0x2ad4b0, hp: 30, speed: 125, damage: 8, radius: 13, xp: 2, behavior: 'chase' },
 };
 
 export type BossAbility = 'burst' | 'charge' | 'summon' | 'slam' | 'barrage';

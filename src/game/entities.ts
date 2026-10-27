@@ -1,9 +1,10 @@
 import type { Sprite, Texture } from 'pixi.js';
 import type { BwSprite } from '../bw/assets';
+import type { AffixId } from '../data/affixes';
 import type { BossDef, EnemyDef } from '../data/enemies';
 import type { SpellDef, SpellStats } from '../data/spells';
 
-export const MAX_SLOTS = 10; // spell slots + internal sources (nuke, feedback, dash)
+export const MAX_SLOTS = 11; // spell slots + internal sources (napalm, nuke, feedback, dash, racial)
 
 export interface BossState {
   def: BossDef;
@@ -51,6 +52,9 @@ export interface Enemy {
   facing: number;
   bw: BwSprite | null;
   bwScale: number;
+  affixes: AffixId[]; // elite modifiers
+  shieldHp: number; // Shielded affix: absorbs damage before health
+  baseTint: number; // tint when not flashing
 }
 
 export interface Projectile {
@@ -125,6 +129,8 @@ export interface Cache {
   label: Sprite | null;
   /** Game time when an opened cache restocks. */
   restockAt?: number;
+  /** -1 while the hero is still standing on it after its shop closed. */
+  shopAt?: number;
 }
 
 export interface Fx {
