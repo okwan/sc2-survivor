@@ -40,7 +40,34 @@ export interface SaveData {
   heroes: Partial<Record<RaceId, string>>;
   /** Zone id -> races that have cleared it (for cross-race achievements). */
   clearedBy: Record<string, RaceId[]>;
+  /** The most recent runs, newest first. */
+  history: RunRecord[];
+  /** Daily challenge results by date (last two weeks). */
+  daily: Record<string, DailyRecord>;
 }
+
+export interface RunRecord {
+  at: number;
+  race: RaceId;
+  hero: string;
+  zone: string;
+  won: boolean;
+  time: number;
+  kills: number;
+  level: number;
+  difficulty: number;
+  mutators: string[];
+  daily?: boolean;
+}
+
+export interface DailyRecord {
+  time: number;
+  kills: number;
+  won: boolean;
+  tries: number;
+}
+
+export const HISTORY_MAX = 25;
 
 const KEY = 'sc2-survivor-save-v1';
 
@@ -62,6 +89,8 @@ function fresh(): SaveData {
     achievements: {},
     heroes: {},
     clearedBy: {},
+    history: [],
+    daily: {},
   };
 }
 
@@ -82,6 +111,8 @@ function load(): SaveData {
     data.achievements ??= {};
     data.heroes ??= {};
     data.clearedBy ??= {};
+    data.history ??= [];
+    data.daily ??= {};
     // earlier saves: count zones already cleared toward the hero unlocks
     for (const r of RACES) {
       for (let i = 0; i < data.races[r].zonesCleared; i++) {
@@ -100,6 +131,25 @@ export function persist() {
     localStorage.setItem(KEY, JSON.stringify(save));
   } catch {
     /* storage unavailable: progress lives for this session only */
+  }
+}
+
+/** The whole save as JSON, for a backup file. */
+export function exportSave(): string {
+  return JSON.stringify(save);
+}
+
+/** Replaces the save with a backup; returns false when the text isn't a Koprulu Survivors save. */
+export function importSave(text: string): boolean {
+  try {
+    const data = JSON.parse(text) as Partial<SaveData>;
+    if (!data || typeof data !== 'object' || data.version !== 1 || !data.races) return false;
+    localStorage.setItem(KEY, text);
+    save = load();
+    persist();
+    return true;
+  } catch {
+    return false;
   }
 }
 

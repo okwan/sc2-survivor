@@ -2,11 +2,12 @@ import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
 import { ACHIEVEMENTS, ACH_BY_ID } from '../data/achievements';
+import { dailyFor, type DailyDef } from '../data/daily';
 import { DIFFICULTIES } from '../data/difficulty';
-import { HEROES } from '../data/heroes';
-import { MAX_MUTATORS, MUTATORS } from '../data/mutators';
-import { ZONES } from '../data/enemies';
-import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
+import { HEROES, HERO_BY_ID } from '../data/heroes';
+import { MAX_MUTATORS, MUTATORS, MUTATOR_BY_ID } from '../data/mutators';
+import { ZONES, ZONE_BY_ID } from '../data/enemies';
+import { GEAR_SLOTS, LEGENDARY_EFFECTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
 import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
@@ -15,12 +16,12 @@ import { setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
 import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
-import { canLearn, currentHero, equip, heroUnlocked, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
+import { canLearn, currentHero, equip, exportSave, heroUnlocked, importSave, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
 
 export interface Shell {
   ui: HTMLElement;
-  startRun(race: RaceId, zoneId: string): void | Promise<void>;
+  startRun(race: RaceId, zoneId: string, daily?: DailyDef): void | Promise<void>;
   quitRun(): void;
   heroPreview(race: RaceId): HTMLCanvasElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;
@@ -54,7 +55,7 @@ function hideTip() {
 
 function itemHtml(it: GearItem): string {
   const stats = Object.entries(it.stats).map(([k, v]) => fmtStat(k as StatKey, v!)).join('<br>');
-  return `<div class="grow"><div class="nm" style="color:${RARITY_COLORS[it.rarity]}">${it.name}</div><div class="muted" style="font-size:12px">${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]}</div><div class="st">${stats}</div></div>`;
+  return `<div class="grow"><div class="nm" style="color:${RARITY_COLORS[it.rarity]}">${it.name}</div><div class="muted" style="font-size:12px">${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]}</div><div class="st">${stats}</div>${it.effect ? `<div class="legfx">${LEGENDARY_EFFECTS[it.effect]}</div>` : ''}</div>`;
 }
 
 // ================================================================ main menu
@@ -75,10 +76,12 @@ export function showMenu(shell: Shell) {
     <div class="zones"></div>
     <div class="diffs"></div>
     <div class="mutators"></div>
+    <div class="daily"></div>
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
       <button class="btn" data-a="achievements">Achievements <span class="gold">${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length}</span></button>
+      <button class="btn" data-a="history">Records</button>
       <button class="btn" data-a="perks">Rewards <span class="gold">⬢ ${save.vespene}</span></button>
       <button class="btn" data-a="graphics">Sprites${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
       <button class="btn" data-a="settings">Settings</button>
@@ -200,6 +203,21 @@ export function showMenu(shell: Shell) {
     }
   }
 
+  // daily challenge: same race, zone and mutators for everyone today
+  const dd = dailyFor();
+  const rec = save.daily[dd.date];
+  const dailyEl = inner.querySelector('.daily') as HTMLElement;
+  dailyEl.innerHTML = `<div><b>Daily challenge</b> <span class="muted">${RACE_DEFS[dd.race].name} on ${ZONE_BY_ID[dd.zone].name} · ${dd.mutators.map((m) => `${MUTATOR_BY_ID[m].icon} ${MUTATOR_BY_ID[m].name}`).join(' · ')}</span></div>
+    <div class="muted">${rec ? `Today's best: ${rec.won ? '<b class="gold">Cleared</b>' : fmtTime(rec.time)} · ${rec.kills} kills · ${rec.tries} ${rec.tries > 1 ? 'tries' : 'try'}` : 'Not played today · first try pays ⬢ 5'}</div>`;
+  const db = document.createElement('button');
+  db.className = 'btn small';
+  db.textContent = 'Play daily';
+  db.onclick = () => {
+    sfx('select');
+    shell.startRun(dd.race, dd.zone, dd);
+  };
+  dailyEl.append(db);
+
   inner.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
     b.onclick = () => {
       sfx('select');
@@ -209,6 +227,7 @@ export function showMenu(shell: Shell) {
       else if (a === 'armory') showArmory(shell, save.lastRace);
       else if (a === 'perks') showPerks(shell);
       else if (a === 'achievements') showAchievements(shell);
+      else if (a === 'history') showHistory(shell);
       else if (a === 'settings') showSettingsMenu(shell);
       else if (a === 'graphics') showGraphics(shell);
     };
@@ -441,7 +460,33 @@ export function showSettingsMenu(shell: Shell) {
       showMenu(shell);
     }
   };
-  row.append(reset);
+  const exp = document.createElement('button');
+  exp.className = 'btn small';
+  exp.textContent = 'Export save';
+  exp.onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([exportSave()], { type: 'application/json' }));
+    a.download = `koprulu-survivors-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const imp = document.createElement('button');
+  imp.className = 'btn small';
+  imp.textContent = 'Import save';
+  imp.onclick = () => {
+    const f = document.createElement('input');
+    f.type = 'file';
+    f.accept = '.json,application/json';
+    f.onchange = async () => {
+      const file = f.files?.[0];
+      if (!file) return;
+      if (!confirm('Replace all current progress with this save file?')) return;
+      if (importSave(await file.text())) showMenu(shell);
+      else alert('That file is not a Koprulu Survivors save.');
+    };
+    f.click();
+  };
+  row.append(exp, imp, reset);
   box.append(row);
   inner.append(box);
 }
@@ -766,7 +811,7 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   box.append(row);
   o.append(box);
   shell.setKeyHandler((c) => {
-    if (c === 'KeyE') eb.click();
+    if (c === 'KeyE' || c === 'Enter') eb.click();
     else if (c === 'KeyS' || c === 'Escape') sb.click();
   });
 }
@@ -857,6 +902,33 @@ export function showVictory(shell: Shell, g: Game, onContinue: () => void) {
   shell.setKeyHandler(null);
 }
 
+export function showHistory(shell: Shell) {
+  const inner = subScreen(shell, 'Records', null, null);
+  const best = document.createElement('table');
+  best.className = 'records';
+  best.innerHTML = `<tr><th></th>${RACES.map((r) => `<th>${RACE_DEFS[r].name}</th>`).join('')}</tr>
+    <tr><td>Runs / wins</td>${RACES.map((r) => `<td>${save.races[r].runs} / ${save.races[r].wins}</td>`).join('')}</tr>
+    ${ZONES.map((z) => `<tr><td>${z.name}</td>${RACES.map((r) => {
+      const t = save.races[r].bestTimes[z.id];
+      const won = (save.clearedBy[z.id] ?? []).includes(r);
+      return `<td>${t ? `${won ? '✔ ' : ''}${fmtTime(t)}` : '<span class="muted">-</span>'}</td>`;
+    }).join('')}</tr>`).join('')}`;
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.style.margin = '16px 0 6px';
+  title.textContent = 'Recent runs';
+  const list = document.createElement('table');
+  list.className = 'records';
+  list.innerHTML = save.history.length
+    ? `<tr><th>When</th><th>Hero</th><th>Zone</th><th>Result</th><th>Time</th><th>Level</th><th>Kills</th></tr>` +
+      save.history.map((h) => {
+        const mode = [h.daily ? 'Daily' : '', h.difficulty ? DIFFICULTIES[h.difficulty]?.name ?? '' : '', h.mutators.length ? `${h.mutators.length} mut.` : ''].filter(Boolean).join(' · ');
+        return `<tr><td>${new Date(h.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${HERO_BY_ID[h.hero]?.name ?? RACE_DEFS[h.race].name}</td><td>${ZONE_BY_ID[h.zone]?.name ?? h.zone}${mode ? ` <span class="muted">${mode}</span>` : ''}</td><td>${h.won ? '<b class="gold">Victory</b>' : '<span class="muted">Defeat</span>'}</td><td>${fmtTime(h.time)}</td><td>${h.level}</td><td>${h.kills.toLocaleString()}</td></tr>`;
+      }).join('')
+    : '<tr><td class="muted">No runs yet.</td></tr>';
+  inner.append(best, title, list);
+}
+
 export function showAchievements(shell: Shell) {
   const inner = subScreen(shell, 'Achievements', null, null);
   const got = Object.keys(save.achievements).length;
@@ -894,6 +966,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
     <table>${rw.lines.map(([k, v]) => `<tr><td>${k}</td><td>+${v}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>+${rw.total}</td></tr></table>
     <div style="margin-top:8px">${rw.pointsAfter > rw.pointsBefore ? `<b class="gold">+${rw.pointsAfter - rw.pointsBefore} talent point${rw.pointsAfter - rw.pointsBefore > 1 ? 's' : ''}!</b> ` : ''}<span class="muted">Next point ${Math.floor(have)}/${need}</span> · <span class="gold">⬢ +${rw.vespene} vespene</span></div>
     ${rw.unlocked ? `<div class="gold" style="margin-top:8px">New zone unlocked: ${rw.unlocked}</div>` : ''}
+    ${rw.daily ? `<div class="gold" style="margin-top:8px">Daily challenge${rw.daily.best ? ': new best today!' : ''}${rw.daily.first ? ' · ⬢ +5 first try' : ''}</div>` : ''}
     ${rw.achievements.map((a) => {
       const hero = HEROES.find((h) => h.unlock === a.id);
       return `<div class="ach-new">${a.icon} Achievement: <b>${a.name}</b> <span class="gold">⬢ +${a.vespene}</span>${hero ? ` · <b class="accent">${hero.name} unlocked!</b>` : ''}</div>`;
@@ -903,7 +976,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const again = document.createElement('button');
   again.className = 'btn primary';
   again.textContent = 'Deploy again';
-  again.onclick = () => shell.startRun(r.race, r.zone.id);
+  again.onclick = () => shell.startRun(r.race, r.zone.id, r.daily ? dailyFor(r.daily) : undefined);
   const tal = document.createElement('button');
   tal.className = 'btn';
   tal.textContent = 'Talents';

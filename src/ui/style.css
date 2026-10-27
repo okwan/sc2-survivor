@@ -156,6 +156,13 @@ kbd {
 .ach.got .ach-icon { filter: none; }
 .ach-new { margin-top: 6px; }
 @media (max-width: 640px) { .heroes { flex-direction: column; } }
+.daily { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 8px 12px; background: var(--panel-2); border: 1px solid rgba(255, 211, 77, 0.35); font-size: 14px; }
+.daily b { color: var(--gold); }
+.daily > div:first-child { flex: 1; }
+.records { width: 100%; border-collapse: collapse; font-size: 14px; }
+.records th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.records td { padding: 4px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+@media (max-width: 640px) { .daily { flex-wrap: wrap; } .records { font-size: 12px; } }
 .diffs { display: flex; gap: 10px; margin-top: 10px; }
 .diff { flex: 1; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .diff b { color: var(--dc); font-size: 16px; }
@@ -237,6 +244,8 @@ kbd {
 .hud .xp > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: left; background: linear-gradient(90deg, #5a2cff, #b07cff); box-shadow: 0 0 10px #8a5cff; }
 .hud .lvl { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 15px; font-weight: 800; line-height: 20px; text-shadow: 0 0 3px #000, 0 0 3px #000; }
 .hud .timer { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; text-shadow: 0 2px 4px #000; letter-spacing: 0.05em; }
+.hud .objective { position: absolute; top: 70px; left: 12px; padding: 3px 12px; font-size: 14px; font-weight: 700; color: #7fe0ff; background: rgba(0, 10, 20, 0.6); border: 1px solid rgba(127, 224, 255, 0.4); white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.hud .poi .arrow.objective { color: #7fe0ff; }
 .hud .timer small { display: block; text-align: center; font-size: 12px; color: var(--muted); letter-spacing: 0.15em; font-weight: 600; }
 .hud .stats { position: absolute; top: 26px; right: 12px; text-align: right; font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px #000; line-height: 1.35; }
 .hud .stats .fps { font-size: 11px; color: var(--muted); }
@@ -407,3 +416,5 @@ h3 .bwic { display: inline-block; vertical-align: middle; width: 27px; height: a
 .lvstats table { width: 100%; display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; font-size: 13px; }
 .lvstats tbody { display: contents; }
 .lvstats tr { display: flex; justify-content: space-between; }
+
+.legfx { color: #ff9a3c; font-size: 12px; margin-top: 3px; }

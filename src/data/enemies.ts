@@ -169,6 +169,44 @@ export const ZONES: ZoneDef[] = [
     ],
     final: { id: 'uf', name: 'Amon\'s Avatar', title: 'The Dark God', shape: 'hybrid', color: 0xff3060, hp: 70000, speed: 90, damage: 56, radius: 74, abilities: ['burst', 'cross', 'voidzones', 'pods', 'slam'], summon: 'hybridling', split: ['hybrid', 2] },
   },
+  {
+    id: 'braxis', name: 'Braxis', desc: 'A frozen UED stronghold. Directorate marines and captured Zerg guard the Psi Disrupter.', tier: 3.9, minutes: 20,
+    ground: [0x5a6a7a, 0x4c5a68], doodad: 0x9ad8ff,
+    waves: [
+      { from: 0, pool: [['marine', 6], ['zergling', 6]] },
+      { from: 2, pool: [['marine', 6], ['firebat', 3], ['hydralisk', 3]] },
+      { from: 5, pool: [['marine', 5], ['firebat', 3], ['hydralisk', 3], ['baneling', 3], ['roach', 2]] },
+      { from: 10, pool: [['marine', 5], ['firebat', 4], ['roach', 4], ['mutalisk', 3], ['siegetank', 1]] },
+      { from: 15, pool: [['marine', 5], ['firebat', 4], ['mutalisk', 4], ['siegetank', 1], ['ultralisk', 1]] },
+    ],
+    elite: 'siegetank', guardian: 'ultralisk',
+    bosses: [
+      { id: 'x1', name: 'Samir Duran', title: 'Traitor Lieutenant', shape: 'marine', color: 0x80b0ff, hp: 9000, speed: 140, damage: 40, radius: 38, abilities: ['charge', 'burst', 'summon'], summon: 'marine' },
+      { id: 'x2', name: 'Psi Disrupter', title: 'UED Superweapon', shape: 'tank', color: 0xa0c8e0, hp: 15000, speed: 60, damage: 44, radius: 58, abilities: ['barrage', 'pods', 'voidzones'] },
+      { id: 'x3', name: 'Tamed Torrasque', title: 'Directorate Pet', shape: 'ultra', color: 0xd8e8f0, hp: 20000, speed: 100, damage: 48, radius: 60, abilities: ['charge', 'slam', 'summon'], summon: 'zergling' },
+      { id: 'x4', name: 'Aleksander', title: 'UED Flagship', shape: 'tank', color: 0x5070a0, hp: 28000, speed: 75, damage: 52, radius: 66, abilities: ['barrage', 'cross', 'slam'] },
+    ],
+    final: { id: 'xf', name: 'Admiral DuGalle', title: 'United Earth Directorate', shape: 'marine', color: 0x3060c0, hp: 90000, speed: 95, damage: 58, radius: 60, abilities: ['barrage', 'pods', 'charge', 'cross', 'voidzones'], summon: 'firebat', split: ['siegetank', 2] },
+  },
+  {
+    id: 'shakuras', name: 'Shakuras', desc: 'The Dark Templar refuge, overrun by the Swarm and stalked by hybrids in its twin temples.', tier: 4.6, minutes: 22,
+    ground: [0x6a5a3a, 0x5c4e32], doodad: 0x4fd2ff,
+    waves: [
+      { from: 0, pool: [['hybridling', 5], ['zergling', 8], ['zealot', 2]] },
+      { from: 2, pool: [['hybridling', 6], ['zealot', 3], ['hydralisk', 3], ['mutalisk', 2]] },
+      { from: 5, pool: [['hybridling', 6], ['stalker', 3], ['baneling', 3], ['roach', 3], ['zealot', 3]] },
+      { from: 10, pool: [['hybridling', 6], ['stalker', 4], ['mutalisk', 4], ['archon', 1], ['hybrid', 1]] },
+      { from: 16, pool: [['hybridling', 7], ['stalker', 4], ['ultralisk', 1], ['archon', 1], ['hybrid', 2]] },
+    ],
+    elite: 'archon', guardian: 'hybrid',
+    bosses: [
+      { id: 's1', name: 'Aldaris', title: 'Judicator of the Conclave', shape: 'zealot', color: 0xffe080, hp: 12000, speed: 125, damage: 46, radius: 42, abilities: ['charge', 'burst', 'cross'] },
+      { id: 's2', name: 'Daggoth', title: 'Cerebrate of the Tiamat Brood', shape: 'ultra', color: 0xc070ff, hp: 20000, speed: 80, damage: 50, radius: 62, abilities: ['slam', 'summon', 'pods'], summon: 'hydralisk' },
+      { id: 's3', name: 'Shadow of Raszagal', title: 'Corrupted Matriarch', shape: 'archon', color: 0x60a0ff, hp: 27000, speed: 90, damage: 52, radius: 52, abilities: ['burst', 'barrage', 'voidzones'] },
+      { id: 's4', name: 'Hybrid Nemesis', title: 'Moebius Masterwork', shape: 'hybrid', color: 0x30ffa0, hp: 36000, speed: 95, damage: 58, radius: 70, abilities: ['charge', 'slam', 'summon', 'cross'], summon: 'hybridling' },
+    ],
+    final: { id: 'sf', name: 'The Second Overmind', title: 'Will of the Swarm', shape: 'ultra', color: 0x8a1ad0, hp: 120000, speed: 70, damage: 64, radius: 80, abilities: ['burst', 'summon', 'slam', 'pods', 'voidzones'], summon: 'ultralisk', split: ['hybrid', 3] },
+  },
 ];
 
 export const ZONE_BY_ID: Record<string, ZoneDef> = Object.fromEntries(ZONES.map((z) => [z.id, z]));

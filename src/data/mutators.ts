@@ -34,4 +34,6 @@ export const ZONE_EVENTS: Record<string, ZoneEvent[]> = {
   aiur: ['storm', 'overlord', 'rush'],
   korhal: ['nuke', 'rush', 'overlord'],
   ulnar: ['rift', 'storm', 'nuke'],
+  braxis: ['nuke', 'rush', 'overlord'],
+  shakuras: ['storm', 'rift', 'rush', 'overlord'],
 };

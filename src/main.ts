@@ -104,7 +104,7 @@ async function boot() {
       copy.getContext('2d')!.drawImage(cv, 0, 0);
       return copy;
     },
-    async startRun(race, zoneId) {
+    async startRun(race, zoneId, daily) {
       unlockAudio();
       shell.quitRun();
       ui.innerHTML = '<div class="loading">Warping in...</div>';
@@ -124,7 +124,7 @@ async function boot() {
         },
         toast: (msg, color) => hud?.toast(msg, color),
         cacheShop: (offers, gearCost, buy) => openDialog((done) => showCacheShop(shell, g, offers, gearCost, buy, done)),
-      });
+      }, daily);
       game = g;
       app.stage.addChild(g.root);
       hud = new Hud(g, input.isTouch);
@@ -134,6 +134,7 @@ async function boot() {
       shell.setKeyHandler(runKeys);
       const title = g.mapGround?.map.title;
       if (title) hud.toast(title, '#9cf');
+      if (daily) hud.toast('Daily challenge', '#ffd34d');
     },
     quitRun() {
       if (game) {
