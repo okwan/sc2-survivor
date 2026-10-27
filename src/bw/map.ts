@@ -40,10 +40,23 @@ export function mapTilesetFiles(set: string): string[] {
   return ['cv5', 'vx4', 'vr4', 'wpe'].map((x) => `tileset/${set}.${x}`);
 }
 
-/** Where the player starts, in map pixels: the first human start location, else the middle. */
+/**
+ * Where the player starts, in map pixels: the start location nearest the middle of the map, so
+ * enemies can come from every side; the middle itself when the map has none.
+ */
 export function mapStart(m: BwMap): [number, number] {
-  const s = m.starts.find((x) => x[2] === 0) ?? m.starts[0];
-  return s ? [s[0], s[1]] : [m.w * 16, m.h * 16];
+  const cx = m.w * 16;
+  const cy = m.h * 16;
+  let best: [number, number] = [cx, cy];
+  let bestD = Infinity;
+  for (const [x, y] of m.starts) {
+    const d = Math.hypot(x - cx, y - cy);
+    if (d < bestD) {
+      bestD = d;
+      best = [x, y];
+    }
+  }
+  return best;
 }
 
 const CH = 16; // megatiles per chunk side (512 px)
