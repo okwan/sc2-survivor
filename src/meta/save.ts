@@ -1,5 +1,6 @@
 import type { GearItem, GearSlot } from '../data/items';
 import { PERKS, gearScore } from '../data/items';
+import { HERO_BY_ID, defaultHero, type HeroDef } from '../data/heroes';
 import { TALENTS, TALENT_CAP, talentXpForPoint, type TalentNode } from '../data/talents';
 import { RACES, addMods, addSpellMod, type RaceId, type SpellMod, type StatMods } from '../data/types';
 
@@ -29,7 +30,44 @@ export interface SaveData {
   settings: Settings;
   lastRace: RaceId;
   lastZone: string;
+  /** Index into DIFFICULTIES for the next run. Hard and Brutal open up on zones the race has cleared. */
+  difficulty: number;
+  /** Mutator ids for the next run (cleared zones only). */
+  mutators: string[];
+  /** Achievement id -> time it was earned. */
+  achievements: Record<string, number>;
+  /** Selected hero per race. */
+  heroes: Partial<Record<RaceId, string>>;
+  /** Zone id -> races that have cleared it (for cross-race achievements). */
+  clearedBy: Record<string, RaceId[]>;
+  /** The most recent runs, newest first. */
+  history: RunRecord[];
+  /** Daily challenge results by date (last two weeks). */
+  daily: Record<string, DailyRecord>;
 }
+
+export interface RunRecord {
+  at: number;
+  race: RaceId;
+  hero: string;
+  zone: string;
+  won: boolean;
+  time: number;
+  kills: number;
+  level: number;
+  difficulty: number;
+  mutators: string[];
+  daily?: boolean;
+}
+
+export interface DailyRecord {
+  time: number;
+  kills: number;
+  won: boolean;
+  tries: number;
+}
+
+export const HISTORY_MAX = 25;
 
 const KEY = 'sc2-survivor-save-v1';
 
@@ -46,6 +84,13 @@ function fresh(): SaveData {
     settings: { volume: 0.5, damageNumbers: true, screenShake: true, zoom: 1 },
     lastRace: 'terran',
     lastZone: 'marsara',
+    difficulty: 0,
+    mutators: [],
+    achievements: {},
+    heroes: {},
+    clearedBy: {},
+    history: [],
+    daily: {},
   };
 }
 
@@ -61,6 +106,20 @@ function load(): SaveData {
     data.settings = { ...f.settings, ...(data.settings ?? {}) };
     data.perks ??= {};
     data.vespene ??= 0;
+    data.difficulty ??= 0;
+    data.mutators ??= [];
+    data.achievements ??= {};
+    data.heroes ??= {};
+    data.clearedBy ??= {};
+    data.history ??= [];
+    data.daily ??= {};
+    // earlier saves: count zones already cleared toward the hero unlocks
+    for (const r of RACES) {
+      for (let i = 0; i < data.races[r].zonesCleared; i++) {
+        const z = ['marsara', 'char', 'aiur', 'korhal', 'ulnar'][i];
+        if (z && !(data.clearedBy[z] ??= []).includes(r)) data.clearedBy[z].push(r);
+      }
+    }
     return data;
   } catch {
     return fresh();
@@ -75,9 +134,42 @@ export function persist() {
   }
 }
 
+/** The whole save as JSON, for a backup file. */
+export function exportSave(): string {
+  return JSON.stringify(save);
+}
+
+/** Replaces the save with a backup; returns false when the text isn't a Koprulu Survivors save. */
+export function importSave(text: string): boolean {
+  try {
+    const data = JSON.parse(text) as Partial<SaveData>;
+    if (!data || typeof data !== 'object' || data.version !== 1 || !data.races) return false;
+    localStorage.setItem(KEY, text);
+    save = load();
+    persist();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function resetSave() {
   save = fresh();
   persist();
+}
+
+// ------------------------------------------------------------ heroes
+export function heroUnlocked(h: HeroDef): boolean {
+  if (!h.unlock) return true;
+  if (save.achievements[h.unlock]) return true;
+  // clear-zone unlocks also count clears from before achievements existed
+  const m = /^clear_(\w+)_(terran|zerg|protoss)$/.exec(h.unlock);
+  return !!m && (save.clearedBy[m[1]] ?? []).includes(m[2] as RaceId);
+}
+
+export function currentHero(race: RaceId): HeroDef {
+  const h = HERO_BY_ID[save.heroes[race] ?? ''];
+  return h && h.race === race && heroUnlocked(h) ? h : defaultHero(race);
 }
 
 // ------------------------------------------------------------ talents

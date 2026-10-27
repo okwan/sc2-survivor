@@ -1,22 +1,27 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
-import { ZONES } from '../data/enemies';
-import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
+import { ACHIEVEMENTS, ACH_BY_ID } from '../data/achievements';
+import { dailyFor, type DailyDef } from '../data/daily';
+import { DIFFICULTIES } from '../data/difficulty';
+import { HEROES, HERO_BY_ID } from '../data/heroes';
+import { MAX_MUTATORS, MUTATORS, MUTATOR_BY_ID } from '../data/mutators';
+import { ZONES, ZONE_BY_ID } from '../data/enemies';
+import { GEAR_SLOTS, LEGENDARY_EFFECTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
-import { MAX_RANK } from '../data/spells';
+import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
 import { playMusic, setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
-import type { Game, RunResult } from '../game/game';
+import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
-import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
+import { canLearn, currentHero, equip, exportSave, heroUnlocked, importSave, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
 
 export interface Shell {
   ui: HTMLElement;
-  startRun(race: RaceId, zoneId: string): void | Promise<void>;
+  startRun(race: RaceId, zoneId: string, daily?: DailyDef): void | Promise<void>;
   quitRun(): void;
   heroPreview(race: RaceId): HTMLCanvasElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;
@@ -50,7 +55,7 @@ function hideTip() {
 
 function itemHtml(it: GearItem): string {
   const stats = Object.entries(it.stats).map(([k, v]) => fmtStat(k as StatKey, v!)).join('<br>');
-  return `<div class="grow"><div class="nm" style="color:${RARITY_COLORS[it.rarity]}">${it.name}</div><div class="muted" style="font-size:12px">${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]}</div><div class="st">${stats}</div></div>`;
+  return `<div class="grow"><div class="nm" style="color:${RARITY_COLORS[it.rarity]}">${it.name}</div><div class="muted" style="font-size:12px">${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]}</div><div class="st">${stats}</div>${it.effect ? `<div class="legfx">${LEGENDARY_EFFECTS[it.effect]}</div>` : ''}</div>`;
 }
 
 // ================================================================ main menu
@@ -67,11 +72,17 @@ export function showMenu(shell: Shell) {
     <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">A StarCraft fan-made survivors game</div></div>
     <div class="section-title">Choose your race</div>
     <div class="races"></div>
+    <div class="heroes"></div>
     <div class="section-title">Choose your battlefield</div>
     <div class="zones"></div>
+    <div class="diffs"></div>
+    <div class="mutators"></div>
+    <div class="daily"></div>
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
+      <button class="btn" data-a="achievements">Achievements <span class="gold">${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length}</span></button>
+      <button class="btn" data-a="history">Records</button>
       <button class="btn" data-a="perks">Rewards <span class="gold">⬢ ${save.vespene}</span></button>
       <button class="btn" data-a="graphics">Sprites${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
       <button class="btn" data-a="settings">Settings</button>
@@ -93,7 +104,7 @@ export function showMenu(shell: Shell) {
     b.className = 'race-card' + (r === race ? ' sel' : '');
     b.style.setProperty('--race', hex(d.color === 0x8a3fb0 ? 0xc06ae0 : d.color === 0x3f7fd6 ? 0x5ca0ff : d.color));
     const pts = pointsEarned(r) - pointsSpent(r);
-    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p>`;
+    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${r === race ? currentHero(r).name : d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p><p class="racial">${d.active}</p>`;
     const cv = shell.heroPreview(r);
     if (cv) b.querySelector('h2')!.before(cv);
     b.onclick = () => {
@@ -101,11 +112,32 @@ export function showMenu(shell: Shell) {
       const unlocked = save.races[r].zonesCleared;
       const zi = ZONES.findIndex((z) => z.id === save.lastZone);
       if (zi > unlocked) save.lastZone = ZONES[0].id;
+      if (ZONES.findIndex((z) => z.id === save.lastZone) >= unlocked) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
     };
     racesEl.append(b);
+  }
+
+  // heroes of the selected race; the others unlock through achievements
+  const heroesEl = inner.querySelector('.heroes')!;
+  const cur = currentHero(race);
+  for (const h of HEROES.filter((x) => x.race === race)) {
+    const open = heroUnlocked(h);
+    const b = document.createElement('button');
+    b.className = 'hero-pick' + (h.id === cur.id ? ' sel' : '') + (open ? '' : ' locked');
+    const how = h.unlock ? ACH_BY_ID[h.unlock] : undefined;
+    const sp = SPELL_BY_ID[h.startSpell];
+    b.innerHTML = `<b>${open ? '' : '🔒 '}${h.name}</b><span>${open ? `${h.desc}${sp ? ` <i>${sp.name}</i>` : ''}` : `Unlock: ${how?.desc ?? 'Achievement'}`}</span>`;
+    b.onclick = () => {
+      if (!open) return;
+      save.heroes[race] = h.id;
+      persist();
+      sfx('select');
+      showMenu(shell);
+    };
+    heroesEl.append(b);
   }
 
   const zonesEl = inner.querySelector('.zones')!;
@@ -119,12 +151,73 @@ export function showMenu(shell: Shell) {
     b.onclick = () => {
       if (locked) return;
       save.lastZone = z.id;
+      if (!cleared) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
     };
     zonesEl.append(b);
   });
+
+  // difficulty: Hard and Brutal open on zones this race has already cleared
+  const diffsEl = inner.querySelector('.diffs')!;
+  const zoneCleared = ZONES.findIndex((z) => z.id === save.lastZone) < rs.zonesCleared;
+  if (!zoneCleared) {
+    save.difficulty = 0;
+    save.mutators = [];
+  }
+  for (const d of DIFFICULTIES) {
+    const b = document.createElement('button');
+    const locked = d.id > 0 && !zoneCleared;
+    b.className = 'diff' + (d.id === save.difficulty ? ' sel' : '') + (locked ? ' locked' : '');
+    b.style.setProperty('--dc', d.color);
+    b.title = locked ? 'Clear this zone to unlock' : d.desc;
+    b.innerHTML = `<b>${locked ? '🔒 ' : ''}${d.name}</b><span>${d.id === 0 ? 'Standard' : `x${d.rewards} rewards`}</span>`;
+    b.onclick = () => {
+      if (locked) return;
+      save.difficulty = d.id;
+      persist();
+      sfx('select');
+      showMenu(shell);
+    };
+    diffsEl.append(b);
+  }
+  // mutators, SC2 co-op style: up to three on a cleared zone, each adding rewards
+  const mutEl = inner.querySelector('.mutators') as HTMLElement;
+  if (zoneCleared) {
+    mutEl.innerHTML = `<div class="mut-title">Mutators <span>${save.mutators.length}/${MAX_MUTATORS} · bonus rewards</span></div>`;
+    for (const m of MUTATORS) {
+      const on = save.mutators.includes(m.id);
+      const b = document.createElement('button');
+      b.className = 'mut' + (on ? ' sel' : '');
+      b.title = m.desc;
+      b.innerHTML = `${m.icon} ${m.name} <span>+${Math.round(m.bonus * 100)}%</span>`;
+      b.onclick = () => {
+        if (on) save.mutators = save.mutators.filter((x) => x !== m.id);
+        else if (save.mutators.length < MAX_MUTATORS) save.mutators = [...save.mutators, m.id];
+        else return;
+        persist();
+        sfx('select');
+        showMenu(shell);
+      };
+      mutEl.append(b);
+    }
+  }
+
+  // daily challenge: same race, zone and mutators for everyone today
+  const dd = dailyFor();
+  const rec = save.daily[dd.date];
+  const dailyEl = inner.querySelector('.daily') as HTMLElement;
+  dailyEl.innerHTML = `<div><b>Daily challenge</b> <span class="muted">${RACE_DEFS[dd.race].name} on ${ZONE_BY_ID[dd.zone].name} · ${dd.mutators.map((m) => `${MUTATOR_BY_ID[m].icon} ${MUTATOR_BY_ID[m].name}`).join(' · ')}</span></div>
+    <div class="muted">${rec ? `Today's best: ${rec.won ? '<b class="gold">Cleared</b>' : fmtTime(rec.time)} · ${rec.kills} kills · ${rec.tries} ${rec.tries > 1 ? 'tries' : 'try'}` : 'Not played today · first try pays ⬢ 5'}</div>`;
+  const db = document.createElement('button');
+  db.className = 'btn small';
+  db.textContent = 'Play daily';
+  db.onclick = () => {
+    sfx('select');
+    shell.startRun(dd.race, dd.zone, dd);
+  };
+  dailyEl.append(db);
 
   inner.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
     b.onclick = () => {
@@ -134,6 +227,8 @@ export function showMenu(shell: Shell) {
       else if (a === 'talents') showTalents(shell, save.lastRace);
       else if (a === 'armory') showArmory(shell, save.lastRace);
       else if (a === 'perks') showPerks(shell);
+      else if (a === 'achievements') showAchievements(shell);
+      else if (a === 'history') showHistory(shell);
       else if (a === 'settings') showSettingsMenu(shell);
       else if (a === 'graphics') showGraphics(shell);
     };
@@ -366,7 +461,33 @@ export function showSettingsMenu(shell: Shell) {
       showMenu(shell);
     }
   };
-  row.append(reset);
+  const exp = document.createElement('button');
+  exp.className = 'btn small';
+  exp.textContent = 'Export save';
+  exp.onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([exportSave()], { type: 'application/json' }));
+    a.download = `koprulu-survivors-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const imp = document.createElement('button');
+  imp.className = 'btn small';
+  imp.textContent = 'Import save';
+  imp.onclick = () => {
+    const f = document.createElement('input');
+    f.type = 'file';
+    f.accept = '.json,application/json';
+    f.onchange = async () => {
+      const file = f.files?.[0];
+      if (!file) return;
+      if (!confirm('Replace all current progress with this save file?')) return;
+      if (importSave(await file.text())) showMenu(shell);
+      else alert('That file is not a Koprulu Survivors save.');
+    };
+    f.click();
+  };
+  row.append(exp, imp, reset);
   box.append(row);
   inner.append(box);
 }
@@ -466,6 +587,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
   const n = g.firstLevelUp && perkLevel('opening') ? 4 : 3;
   g.firstLevelUp = false;
   let cards: Card[] = dealCards(g, n);
+  if (cards.some((c) => c.rarity === 4)) sfx('win'); // a legendary in the hand gets a fanfare
   let banishMode = false;
   let showStats = false;
   // free rerolls don't raise the price of the paid ones
@@ -492,6 +614,20 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     if (g.pendingLevels > 0) showLevelUp(shell, g, onDone);
     else onDone();
   };
+  const autoPick = () => {
+    const order = { evolution: 5, upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
+    let hand = cards;
+    while (g.pendingLevels > 0) {
+      const best = hand.slice().sort((a, b) => b.rarity - a.rarity || order[b.kind] - order[a.kind])[0];
+      applyCard(g, best);
+      g.pendingLevels--;
+      hand = dealCards(g, 3);
+    }
+    sfx('select');
+    o.remove();
+    hideTip();
+    onDone();
+  };
   const reroll = () => {
     const free = g.stats.rerolls - g.rerollsUsed;
     if (free <= 0) {
@@ -516,7 +652,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     cards.forEach((c, i) => {
       const v = describeCard(g, c);
       const b = document.createElement('button');
-      b.className = 'card';
+      b.className = 'card' + (c.rarity >= 3 ? ` r${c.rarity}` : '');
       b.style.setProperty('--rc', RARITY_COLORS[c.rarity]);
       b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.rarity]}</div><div class="ic">${v.icon}</div><div class="nm">${v.title}</div><div class="ty">${v.type}</div><ul>${v.lines.map((l) => `<li>${l}</li>`).join('')}</ul><div class="ds">${v.desc}</div>`;
       b.onclick = () => pick(c);
@@ -541,6 +677,15 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
         render();
       };
       acts.append(bb);
+    }
+    if (g.pendingLevels > 2 && !banishMode) {
+      // a magnet sweep can bank a dozen levels at once: let the player take the rest in one go
+      const ab = document.createElement('button');
+      ab.className = 'btn small';
+      ab.innerHTML = `<kbd>A</kbd> Auto-pick ${g.pendingLevels}`;
+      ab.title = 'Take the best card from a fresh hand for each remaining level';
+      ab.onclick = autoPick;
+      acts.append(ab);
     }
     const sb = document.createElement('button');
     sb.className = 'btn small';
@@ -568,6 +713,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       const i = parseInt(c.slice(5)) - 1;
       if (cards[i]) pick(cards[i]);
     } else if (c === 'KeyR') reroll();
+    else if (c === 'KeyA' && g.pendingLevels > 2 && !banishMode) autoPick();
     else if (c === 'KeyB' && g.stats.banishes > g.banishesUsed) {
       banishMode = !banishMode;
       render();
@@ -575,6 +721,55 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       showStats = !showStats;
       render();
     }
+  });
+}
+
+/** Supply cache shop: run-only modules for minerals, or a gear requisition for the account. */
+export function showCacheShop(shell: Shell, g: Game, offers: CacheOffer[], gearCost: number, buy: (o: CacheOffer | 'gear' | null) => void, onDone: () => void) {
+  const o = overlay(shell);
+  const close = (choice: CacheOffer | 'gear' | null) => {
+    if (choice === 'gear' && g.player.minerals < gearCost) return;
+    if (choice && choice !== 'gear' && g.player.minerals < choice.price) return;
+    buy(choice);
+    sfx('select');
+    o.remove();
+    onDone();
+  };
+  const box = document.createElement('div');
+  box.className = 'levelup shop';
+  box.innerHTML = `<h2>SUPPLY CACHE</h2><div class="hint">Modules last for this run. You have <b class="minerals">${g.player.minerals} minerals</b>.</div>`;
+  const row = document.createElement('div');
+  row.className = 'cards';
+  offers.forEach((c, i) => {
+    const b = document.createElement('button');
+    const afford = g.player.minerals >= c.price;
+    b.className = 'card' + (c.mod.rarity >= 3 ? ` r${c.mod.rarity}` : '') + (afford ? '' : ' poor');
+    b.style.setProperty('--rc', RARITY_COLORS[c.mod.rarity]);
+    b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.mod.rarity]} module</div><div class="ic">${c.mod.icon}</div><div class="nm">${c.mod.name}</div><ul><li>${c.mod.desc}</li></ul><div class="price">💎 ${c.price}</div>`;
+    b.onclick = () => close(c);
+    row.append(b);
+  });
+  const acts = document.createElement('div');
+  acts.className = 'row';
+  const gb = document.createElement('button');
+  gb.className = 'btn small';
+  gb.innerHTML = `<kbd>G</kbd> Requisition gear (💎 ${gearCost})`;
+  gb.title = 'A random piece of gear for this race, kept after the run';
+  gb.disabled = g.player.minerals < gearCost;
+  gb.onclick = () => close('gear');
+  const lb = document.createElement('button');
+  lb.className = 'btn small';
+  lb.innerHTML = '<kbd>Esc</kbd> Leave';
+  lb.onclick = () => close(null);
+  acts.append(gb, lb);
+  box.append(row, acts);
+  o.append(box);
+  shell.setKeyHandler((k) => {
+    if (k.startsWith('Digit')) {
+      const c = offers[parseInt(k.slice(5)) - 1];
+      if (c) close(c);
+    } else if (k === 'KeyG') close('gear');
+    else if (k === 'Escape') close(null);
   });
 }
 
@@ -617,7 +812,7 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   box.append(row);
   o.append(box);
   shell.setKeyHandler((c) => {
-    if (c === 'KeyE') eb.click();
+    if (c === 'KeyE' || c === 'Enter') eb.click();
     else if (c === 'KeyS' || c === 'Escape') sb.click();
   });
 }
@@ -708,6 +903,53 @@ export function showVictory(shell: Shell, g: Game, onContinue: () => void) {
   shell.setKeyHandler(null);
 }
 
+export function showHistory(shell: Shell) {
+  const inner = subScreen(shell, 'Records', null, null);
+  const best = document.createElement('table');
+  best.className = 'records';
+  best.innerHTML = `<tr><th></th>${RACES.map((r) => `<th>${RACE_DEFS[r].name}</th>`).join('')}</tr>
+    <tr><td>Runs / wins</td>${RACES.map((r) => `<td>${save.races[r].runs} / ${save.races[r].wins}</td>`).join('')}</tr>
+    ${ZONES.map((z) => `<tr><td>${z.name}</td>${RACES.map((r) => {
+      const t = save.races[r].bestTimes[z.id];
+      const won = (save.clearedBy[z.id] ?? []).includes(r);
+      return `<td>${t ? `${won ? '✔ ' : ''}${fmtTime(t)}` : '<span class="muted">-</span>'}</td>`;
+    }).join('')}</tr>`).join('')}`;
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.style.margin = '16px 0 6px';
+  title.textContent = 'Recent runs';
+  const list = document.createElement('table');
+  list.className = 'records';
+  list.innerHTML = save.history.length
+    ? `<tr><th>When</th><th>Hero</th><th>Zone</th><th>Result</th><th>Time</th><th>Level</th><th>Kills</th></tr>` +
+      save.history.map((h) => {
+        const mode = [h.daily ? 'Daily' : '', h.difficulty ? DIFFICULTIES[h.difficulty]?.name ?? '' : '', h.mutators.length ? `${h.mutators.length} mut.` : ''].filter(Boolean).join(' · ');
+        return `<tr><td>${new Date(h.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${HERO_BY_ID[h.hero]?.name ?? RACE_DEFS[h.race].name}</td><td>${ZONE_BY_ID[h.zone]?.name ?? h.zone}${mode ? ` <span class="muted">${mode}</span>` : ''}</td><td>${h.won ? '<b class="gold">Victory</b>' : '<span class="muted">Defeat</span>'}</td><td>${fmtTime(h.time)}</td><td>${h.level}</td><td>${h.kills.toLocaleString()}</td></tr>`;
+      }).join('')
+    : '<tr><td class="muted">No runs yet.</td></tr>';
+  inner.append(best, title, list);
+}
+
+export function showAchievements(shell: Shell) {
+  const inner = subScreen(shell, 'Achievements', null, null);
+  const got = Object.keys(save.achievements).length;
+  const head = document.createElement('div');
+  head.className = 'muted';
+  head.style.margin = '0 0 10px';
+  head.textContent = `${got} of ${ACHIEVEMENTS.length} earned. Achievements award vespene, and some unlock new heroes.`;
+  const list = document.createElement('div');
+  list.className = 'achievements';
+  for (const a of ACHIEVEMENTS) {
+    const at = save.achievements[a.id];
+    const hero = HEROES.find((h) => h.unlock === a.id);
+    const el = document.createElement('div');
+    el.className = 'ach' + (at ? ' got' : '');
+    el.innerHTML = `<div class="ach-icon">${a.icon}</div><div><b>${a.name}</b><p>${a.desc}</p><span class="gold">⬢ ${a.vespene}</span>${hero ? ` · <span class="accent">Unlocks ${hero.name}</span>` : ''}${at ? ` · <span class="muted">${new Date(at).toLocaleDateString()}</span>` : ''}</div>`;
+    list.append(el);
+  }
+  inner.append(head, list);
+}
+
 export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const o = overlay(shell);
   const box = document.createElement('div');
@@ -716,7 +958,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const maxDmg = Math.max(1, ...r.damage.map((d) => d.dmg));
   const [have, need] = nextPointProgress(r.race);
   box.innerHTML = `<h2 style="color:${won ? 'var(--gold)' : 'var(--danger)'}">${won ? 'Victory' : 'Defeated'}</h2>
-    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.endless ? ' · Endless' : ''}</div>
+    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.difficulty.id ? ` · ${r.difficulty.name}` : ''}${r.mutators.length ? ` · ${r.mutators.length} mutator${r.mutators.length > 1 ? 's' : ''}` : ''}${r.endless ? ' · Endless' : ''}</div>
     ${!won && r.killedBy ? `<div style="margin-top:4px">Killed by <b style="color:var(--danger)">${r.killedBy}</b></div>` : ''}
     <table style="margin:10px 0"><tr><td>Time survived</td><td>${fmtTime(r.time)}</td></tr><tr><td>Level</td><td>${r.level}</td></tr><tr><td>Kills</td><td>${r.kills}</td></tr><tr><td>Bosses</td><td>${r.bosses}</td></tr></table>
     <div class="section-title" style="margin:10px 0 4px">Damage</div>
@@ -724,13 +966,18 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
     <div class="section-title" style="margin:14px 0 4px">Talent experience</div>
     <table>${rw.lines.map(([k, v]) => `<tr><td>${k}</td><td>+${v}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>+${rw.total}</td></tr></table>
     <div style="margin-top:8px">${rw.pointsAfter > rw.pointsBefore ? `<b class="gold">+${rw.pointsAfter - rw.pointsBefore} talent point${rw.pointsAfter - rw.pointsBefore > 1 ? 's' : ''}!</b> ` : ''}<span class="muted">Next point ${Math.floor(have)}/${need}</span> · <span class="gold">⬢ +${rw.vespene} vespene</span></div>
-    ${rw.unlocked ? `<div class="gold" style="margin-top:8px">New zone unlocked: ${rw.unlocked}</div>` : ''}`;
+    ${rw.unlocked ? `<div class="gold" style="margin-top:8px">New zone unlocked: ${rw.unlocked}</div>` : ''}
+    ${rw.daily ? `<div class="gold" style="margin-top:8px">Daily challenge${rw.daily.best ? ': new best today!' : ''}${rw.daily.first ? ' · ⬢ +5 first try' : ''}</div>` : ''}
+    ${rw.achievements.map((a) => {
+      const hero = HEROES.find((h) => h.unlock === a.id);
+      return `<div class="ach-new">${a.icon} Achievement: <b>${a.name}</b> <span class="gold">⬢ +${a.vespene}</span>${hero ? ` · <b class="accent">${hero.name} unlocked!</b>` : ''}</div>`;
+    }).join('')}`;
   const row = document.createElement('div');
   row.className = 'row';
   const again = document.createElement('button');
   again.className = 'btn primary';
   again.textContent = 'Deploy again';
-  again.onclick = () => shell.startRun(r.race, r.zone.id);
+  again.onclick = () => shell.startRun(r.race, r.zone.id, r.daily ? dailyFor(r.daily) : undefined);
   const tal = document.createElement('button');
   tal.className = 'btn';
   tal.textContent = 'Talents';

@@ -1,4 +1,5 @@
-/** Keyboard, mouse and touch input. Movement is read as a normalized vector each frame. */
+import { hyp } from './math';
+/** Keyboard, mouse, touch and gamepad input. Movement is read as a normalized vector each frame. */
 export class Input {
   private keys = new Set<string>();
   mouseX = 0;
@@ -19,6 +20,10 @@ export class Input {
   readonly isTouch = matchMedia('(pointer: coarse)').matches;
   joystickEl: HTMLDivElement;
   private knobEl: HTMLDivElement;
+  // gamepad: left stick or d-pad moves, buttons map onto the keyboard shortcuts
+  private padX = 0;
+  private padY = 0;
+  private padHeld: boolean[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', (e) => {
@@ -77,7 +82,7 @@ export class Input {
         if (t.identifier !== this.touchId) continue;
         let dx = t.clientX - this.touchOx;
         let dy = t.clientY - this.touchOy;
-        const len = Math.hypot(dx, dy);
+        const len = hyp(dx, dy);
         const max = 50;
         if (len > max) {
           dx = (dx / len) * max;
@@ -100,6 +105,41 @@ export class Input {
     };
     canvas.addEventListener('touchend', end);
     canvas.addEventListener('touchcancel', end);
+    window.addEventListener('gamepadconnected', () => this.pollPads(), { once: true });
+  }
+
+  /** A = dash / confirm, X / Y / B = cards 1-3, RB = reroll, LB = banish, Start = pause. */
+  private static PAD_KEYS: Record<number, string> = { 0: 'Enter', 2: 'Digit1', 3: 'Digit2', 1: 'Digit3', 5: 'KeyR', 4: 'KeyB', 9: 'Escape' };
+
+  private pollPads() {
+    const pad = Array.from(navigator.getGamepads?.() ?? []).find((g) => g && g.connected);
+    if (pad) {
+      let x = pad.axes[0] ?? 0;
+      let y = pad.axes[1] ?? 0;
+      const b = (i: number) => !!pad.buttons[i]?.pressed;
+      if (b(14)) x = -1;
+      if (b(15)) x = 1;
+      if (b(12)) y = -1;
+      if (b(13)) y = 1;
+      const l = hyp(x, y);
+      if (l < 0.2) x = y = 0;
+      else if (l > 1) {
+        x /= l;
+        y /= l;
+      }
+      this.padX = x;
+      this.padY = y;
+      for (let i = 0; i < pad.buttons.length; i++) {
+        const down = b(i);
+        if (down && !this.padHeld[i]) {
+          if (i === 0) this.dashPressed = true;
+          const code = Input.PAD_KEYS[i];
+          if (code) this.onKey?.(code);
+        }
+        this.padHeld[i] = down;
+      }
+    } else this.padX = this.padY = 0;
+    requestAnimationFrame(() => this.pollPads());
   }
 
   down(code: string) {
@@ -115,11 +155,12 @@ export class Input {
     if (this.down('KeyW') || this.down('ArrowUp')) y -= 1;
     if (this.down('KeyS') || this.down('ArrowDown')) y += 1;
     if (x || y) {
-      const l = Math.hypot(x, y);
+      const l = hyp(x, y);
       return [x / l, y / l];
     }
+    if (this.padX || this.padY) return [this.padX, this.padY];
     if (this.touchId !== null) {
-      const l = Math.hypot(this.touchDx, this.touchDy);
+      const l = hyp(this.touchDx, this.touchDy);
       if (l < 0.15) return [0, 0];
       return [this.touchDx, this.touchDy];
     }

@@ -1,9 +1,11 @@
 import type { Sprite, Texture } from 'pixi.js';
 import type { BwSprite } from '../bw/assets';
+import type { AffixId } from '../data/affixes';
 import type { BossDef, EnemyDef } from '../data/enemies';
+import type { EvolutionDef } from '../data/evolutions';
 import type { SpellDef, SpellStats } from '../data/spells';
 
-export const MAX_SLOTS = 10; // spell slots + internal sources (nuke, feedback, dash)
+export const MAX_SLOTS = 11; // spell slots + internal sources (napalm, nuke, feedback, dash, racial)
 
 export interface BossState {
   def: BossDef;
@@ -14,10 +16,12 @@ export interface BossState {
   chargeDy: number;
   windup: number; // telegraph time before a charge
   final: boolean;
+  phase2: boolean; // below half health
 }
 
 export interface Enemy {
   uid: number;
+  idx: number; // position in Game.enemies, kept up to date as the array is compacted
   def: EnemyDef;
   x: number;
   y: number;
@@ -52,6 +56,10 @@ export interface Enemy {
   facing: number;
   bw: BwSprite | null;
   bwScale: number;
+  affixes: AffixId[]; // elite modifiers
+  shieldHp: number; // Shielded affix: absorbs damage before health
+  baseTint: number; // tint when not flashing
+  revived: boolean; // Just Die! mutator: already came back once
 }
 
 export interface Projectile {
@@ -126,6 +134,8 @@ export interface Cache {
   label: Sprite | null;
   /** Game time when an opened cache restocks. */
   restockAt?: number;
+  /** -1 while the hero is still standing on it after its shop closed. */
+  shopAt?: number;
 }
 
 export interface Fx {
@@ -232,4 +242,6 @@ export interface SpellInstance {
   /** Mastery cards taken after max rank. */
   mastery?: number;
   nextSpawn: number;
+  /** Set once the spell has evolved. */
+  evo?: EvolutionDef;
 }

@@ -55,12 +55,14 @@ export class Hud {
   private last: Record<string, string | number> = {};
   private bossBars = new Map<number, { root: HTMLDivElement; fill: HTMLElement }>();
   private spellCds: HTMLElement[] = [];
+  private statsEls: { kills: HTMLElement; minerals: HTMLElement; fps: HTMLElement | null } | null = null;
   pauseBtn = el('button', 'pausebtn', '❚❚');
   dashBtn: HTMLButtonElement | null = null;
   private bw: BwConsole | null = null;
   private arrowsEl = el('div', 'poi');
   private tipStep = tipsSeen() ? TIPS.length : 0;
   private arrows: HTMLElement[] = [];
+  private objEl = el('div', 'objective');
 
   constructor(
     private game: Game,
@@ -75,7 +77,7 @@ export class Hud {
     this.shBar.append(this.shFill);
     vit.append(this.shBar, hp);
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
-    this.root.append(this.arrowsEl, xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
+    this.root.append(this.arrowsEl, xp, this.timer, this.objEl, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
     if (!touch && hasBwConsole(game.race.id)) {
       this.bw = new BwConsole(game, () => this.pauseBtn.click());
@@ -109,10 +111,22 @@ export class Hud {
       const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
     });
-    const fps = Math.round(g.fps);
-    this.set('stats', `${p.kills}|${p.minerals}|${SHOW_FPS ? `${fps}|${g.enemyCount}` : ''}`, () => {
-      this.stats.innerHTML = `☠ ${p.kills}<br><span class="minerals">${p.minerals} minerals</span>${SHOW_FPS ? `<br><span class="fps">${fps} fps · ${g.enemyCount} units</span>` : ''}`;
+    const obj = g.objectiveText();
+    this.set('obj', obj, () => {
+      this.objEl.textContent = obj;
+      this.objEl.style.display = obj ? '' : 'none';
     });
+    const fps = Math.round(g.fps);
+    if (!this.statsEls) {
+      this.stats.innerHTML = `☠ <span></span><br><span class="minerals"></span>${SHOW_FPS ? '<br><span class="fps"></span>' : ''}`;
+      const sp = this.stats.querySelectorAll('span');
+      this.statsEls = { kills: sp[0], minerals: sp[1], fps: sp[2] ?? null };
+    }
+    // text nodes only: rewriting innerHTML on every kill made the browser parse HTML every frame
+    const se = this.statsEls;
+    this.set('kills', p.kills, () => (se.kills.textContent = `${p.kills}`));
+    this.set('minerals', p.minerals, () => (se.minerals.textContent = `${p.minerals} minerals`));
+    if (se.fps) this.set('fps', `${fps}|${g.enemyCount}`, () => (se.fps!.textContent = `${fps} fps · ${g.enemyCount} units`));
     const hpk = Math.max(0, p.hp / s.maxHp);
     this.set('hp', Math.round(hpk * 300), () => (this.hpFill.style.transform = `scaleX(${hpk})`));
     this.set('hpt', `${Math.ceil(p.hp)}/${Math.round(s.maxHp)}`, () => (this.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${Math.round(s.maxHp)}`));
@@ -127,7 +141,7 @@ export class Hud {
     const locked = p.level < 5;
     const dk = locked ? 1 : p.dashCd / (5 * Math.max(0.3, s.dashCooldown));
     this.set('dash', Math.round(dk * 40) + (locked ? 1000 : 0), () => {
-      this.dashCd.style.height = `${dk * 100}%`;
+      setHeight(this.dashCd, `${Math.round(dk * 40) * 2.5}%`);
       this.dashEl.title = locked ? `${g.race.dashName} unlocks at level 5` : g.race.dashName;
       this.dashEl.style.opacity = locked ? '0.4' : '1';
       if (this.dashBtn) {
@@ -154,7 +168,7 @@ export class Hud {
       const sp = g.spells[i];
       const k = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon' ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
       const cd = this.spellCds[i];
-      if (cd) cd.style.height = `${Math.round(k * 46)}px`;
+      if (cd) setHeight(cd, `${Math.round(k * 46)}px`);
     }
     this.updateArrows();
     this.root.classList.toggle('lowhp', p.hp > 0 && p.hp / s.maxHp < 0.3);
@@ -212,12 +226,13 @@ export class Hud {
         this.arrowsEl.append(a);
         this.arrows.push(a);
       }
-      a.className = `arrow ${t.kind}`;
-      a.style.display = '';
+      const cls = `arrow ${t.kind}`;
+      if (a.className !== cls) a.className = cls;
+      if (a.style.display) a.style.display = '';
       a.style.transform = `translate(${cx + dx * k}px, ${cy + dy * k}px) rotate(${Math.atan2(dy, dx)}rad)`;
       n++;
     }
-    for (let i = n; i < this.arrows.length; i++) this.arrows[i].style.display = 'none';
+    for (let i = n; i < this.arrows.length; i++) if (this.arrows[i].style.display !== 'none') this.arrows[i].style.display = 'none';
   }
 
   toast(msg: string, color = '#dfe8f2') {
@@ -261,6 +276,7 @@ class BwConsole {
   private cells: { root: HTMLDivElement; img: HTMLImageElement; cd: HTMLElement; rk: HTMLElement; key: string }[] = [];
   private last: Record<string, string | number> = {};
   private frame = 0;
+  private st: { lvl: HTMLElement; hp: HTMLElement; hpv: HTMLElement; sh: HTMLElement | null; shv: HTMLElement | null; xp: HTMLElement; kills: HTMLElement; min: HTMLElement } | null = null;
   private onResize = () => this.fit();
 
   constructor(private game: Game, pause: () => void) {
@@ -323,7 +339,7 @@ class BwConsole {
       const sp = g.spells[i];
       if (!sp) {
         this.setIcon(c, -1, 'on');
-        c.cd.style.height = '0';
+        setHeight(c.cd, '0px');
         c.rk.textContent = '';
         c.root.title = '';
         continue;
@@ -331,7 +347,7 @@ class BwConsole {
       this.setIcon(c, SPELL_ICONS[sp.def.id] ?? -1, 'on');
       const passive = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon';
       const k = passive ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
-      c.cd.style.height = `${Math.round(k * 34)}px`;
+      setHeight(c.cd, `${Math.round(k * 34)}px`);
       this.set(`rk${i}`, `${sp.def.id}${sp.rank}`, () => {
         c.rk.textContent = `${sp.rank}`;
         c.root.title = `${sp.def.name} (rank ${sp.rank})`;
@@ -341,7 +357,7 @@ class BwConsole {
     const locked = p.level < 5;
     const dk = locked ? 1 : p.dashCd / (5 * Math.max(0.3, s.dashCooldown));
     this.setIcon(dash, ru?.dash ?? -1, locked ? 'off' : 'on');
-    dash.cd.style.height = `${Math.round((locked ? 0 : dk) * 34)}px`;
+    setHeight(dash.cd, `${Math.round((locked ? 0 : dk) * 34)}px`);
     this.set('dash', locked ? 1 : 0, () => {
       dash.root.title = locked ? `${g.race.dashName} unlocks at level 5` : `${g.race.dashName} (F / Space)`;
       dash.rk.textContent = locked ? '' : 'F';
@@ -355,18 +371,33 @@ class BwConsole {
       if (u) this.wire.src = u;
     });
     const xpk = Math.min(1, p.xp / g.xpNeeded);
-    const shield = s.maxShield > 0 ? `<div class="bar sh"><i style="width:${(p.shield / s.maxShield) * 100}%"></i></div><div class="v sh">${Math.ceil(p.shield)}/${Math.round(s.maxShield)}</div>` : '';
-    this.set(
-      'status',
-      `${Math.ceil(p.hp)}|${Math.ceil(p.shield)}|${Math.round(xpk * 100)}|${p.level}|${p.kills}|${p.minerals}|${Math.round(s.maxHp)}`,
-      () => {
-        this.status.innerHTML = `<div class="nm">${g.race.hero}<span>Level ${p.level}</span></div>
-<div class="bar hp"><i style="width:${hpk * 100}%"></i></div><div class="v hp">${Math.ceil(Math.max(0, p.hp))}/${Math.round(s.maxHp)}</div>
-${shield}
-<div class="bar xp"><i style="width:${xpk * 100}%"></i></div>
-<div class="row"><span>Kills ${p.kills}</span><span class="min">Minerals ${p.minerals}</span></div>`;
-      },
-    );
+    const hasShield = s.maxShield > 0;
+    this.set('statusShape', hasShield ? 1 : 0, () => {
+      this.status.innerHTML = `<div class="nm">${g.race.hero}<span></span></div>
+<div class="bar hp"><i></i></div><div class="v hp"></div>
+${hasShield ? '<div class="bar sh"><i></i></div><div class="v sh"></div>' : ''}
+<div class="bar xp"><i></i></div>
+<div class="row"><span></span><span class="min"></span></div>`;
+      const q = (sel: string) => this.status.querySelector(sel) as HTMLElement;
+      this.st = {
+        lvl: q('.nm span'), hp: q('.bar.hp i'), hpv: q('.v.hp'), sh: hasShield ? q('.bar.sh i') : null, shv: hasShield ? q('.v.sh') : null,
+        xp: q('.bar.xp i'), kills: q('.row span'), min: q('.row .min'),
+      };
+      this.last.lvl = this.last.hpt = this.last.sht = this.last.kills = this.last.min = this.last.hpw = this.last.shw = this.last.xpw = '';
+    });
+    // update text nodes and bar widths in place; rebuilding the panel's HTML on every kill was a per-frame parse late in a run
+    const st = this.st!;
+    this.set('lvl', p.level, () => (st.lvl.textContent = `Level ${p.level}`));
+    this.set('hpw', Math.round(hpk * 200), () => (st.hp.style.width = `${hpk * 100}%`));
+    this.set('hpt', `${Math.ceil(p.hp)}/${Math.round(s.maxHp)}`, () => (st.hpv.textContent = `${Math.ceil(Math.max(0, p.hp))}/${Math.round(s.maxHp)}`));
+    if (st.sh && st.shv) {
+      const shk = p.shield / s.maxShield;
+      this.set('shw', Math.round(shk * 200), () => (st.sh!.style.width = `${shk * 100}%`));
+      this.set('sht', `${Math.ceil(p.shield)}/${Math.round(s.maxShield)}`, () => (st.shv!.textContent = `${Math.ceil(p.shield)}/${Math.round(s.maxShield)}`));
+    }
+    this.set('xpw', Math.round(xpk * 200), () => (st.xp.style.width = `${xpk * 100}%`));
+    this.set('kills', p.kills, () => (st.kills.textContent = `Kills ${p.kills}`));
+    this.set('min', p.minerals, () => (st.min.textContent = `Minerals ${p.minerals}`));
     if (this.frame++ % 4 === 0) this.drawMinimap();
   }
 
@@ -446,4 +477,11 @@ ${shield}
   destroy() {
     window.removeEventListener('resize', this.onResize);
   }
+}
+
+/** Writes a style height only when it changed: style writes invalidate layout even when the value is the same. */
+function setHeight(e: HTMLElement & { _h?: string }, h: string) {
+  if (e._h === h) return;
+  e._h = h;
+  e.style.height = h;
 }

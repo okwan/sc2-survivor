@@ -1,4 +1,5 @@
 import { bwIcon, spellIcon } from '../bw/ui';
+import { EVO_BY_SPELL, type EvolutionDef } from '../data/evolutions';
 import { PASSIVES, type PassiveDef } from '../data/items';
 import { MAX_RANK, MAX_SPELLS, SPELLS, SPELL_BY_ID, SPELL_STAT_LABELS, spellStatsAtRank, type SpellDef, type SpellStats } from '../data/spells';
 import { RARITY_MULT, fmtStat, type Rarity } from '../data/types';
@@ -9,17 +10,18 @@ export type Card =
   | { kind: 'upgrade'; id: string; def: SpellDef; rarity: Rarity; key: string }
   | { kind: 'mastery'; id: string; def: SpellDef; rarity: Rarity; key: string }
   | { kind: 'passive'; id: string; def: PassiveDef; rarity: Rarity; key: string }
+  | { kind: 'evolution'; id: string; def: SpellDef; evo: EvolutionDef; rarity: Rarity; key: string }
   | { kind: 'fallback'; id: 'minerals' | 'heal'; rarity: Rarity; key: string };
 
 /** Extra damage on a spell from the card's rarity. */
-export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.5];
+export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.8];
 
 /** Late game: a maxed spell can take this many mastery cards. */
 export const MAX_MASTERY = 5;
 const MASTERY_DAMAGE = 0.15;
 
 export function rollRarity(luck: number): Rarity {
-  const w = [62, 24, 10, 3.4, 0.9];
+  const w = [60, 24, 10.5, 4, 1.5];
   for (let i = 1; i < 5; i++) w[i] *= 1 + luck * (1 + i * 0.6);
   const total = w.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
@@ -38,6 +40,11 @@ export function dealCards(g: Game, n: number): Card[] {
     const key = `spell:${def.id}`;
     if (g.banished.has(key)) continue;
     const s = owned.get(def.id);
+    const evo = EVO_BY_SPELL[def.id];
+    if (s && evo && !s.evo && s.rank >= MAX_RANK && (g.passivePicks[evo.passive] ?? 0) > 0) {
+      // an evolution is ready: offered as a Legendary, and very likely to show up
+      pool.push({ key: `evo:${def.id}`, w: 6, make: () => ({ kind: 'evolution', id: def.id, def, evo, rarity: 4, key: `evo:${def.id}` }) });
+    }
     if (s) {
       if (s.rank < MAX_RANK) pool.push({ key, w: 1.5, make: (r) => ({ kind: 'upgrade', id: def.id, def, rarity: r, key }) });
       else if ((s.mastery ?? 0) < MAX_MASTERY) pool.push({ key, w: 1.0, make: (r) => ({ kind: 'mastery', id: def.id, def, rarity: r, key }) });
@@ -102,7 +109,12 @@ export function describeCard(g: Game, c: Card): CardView {
         if (Math.abs(a[k] - b[k]) > 1e-6) lines.push(`${SPELL_STAT_LABELS[k]} ${fmtNum(k, a[k])} → ${fmtNum(k, b[k])}`);
       }
       if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
-      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc };
+      const evo = EVO_BY_SPELL[c.id];
+      const hint = evo && !s.evo ? ` Evolves at rank ${MAX_RANK} with ${PASSIVES.find((p) => p.id === evo.passive)?.name ?? 'a passive'}.` : '';
+      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc + hint };
+    }
+    case 'evolution': {
+      return { title: c.evo.name, icon: c.evo.icon, type: `Evolution of ${c.def.name}`, lines: [c.evo.desc], desc: 'Evolves this spell for the rest of the run.' };
     }
     case 'mastery': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
@@ -137,6 +149,13 @@ export function applyCard(g: Game, c: Card) {
       s.rank = Math.min(MAX_RANK, s.rank + (c.rarity >= 4 ? 2 : 1));
       s.bonus += RARITY_SPELL_BONUS[c.rarity];
       g.recomputeStats();
+      break;
+    }
+    case 'evolution': {
+      const s = g.spells.find((x) => x.def.id === c.id)!;
+      s.evo = c.evo;
+      g.recomputeStats();
+      g.toastMsg(`${c.def.name} evolved into ${c.evo.name}!`, '#ff8000');
       break;
     }
     case 'mastery': {
