@@ -1,0 +1,21 @@
+{
+  "name": "sc2-survivor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "fetch-bw": "node scripts/fetch-bw.mjs dist"
+  },
+  "dependencies": {
+    "pixi.js": "^8.17.1"
+  },
+  "devDependencies": {
+    "@wowserhq/stormjs": "^0.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}
