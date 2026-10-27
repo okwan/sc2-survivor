@@ -49,7 +49,21 @@ for (let i = 0; i < W * H; i++) out.set([80, 0, 80, 255], i * 4);
 const full = new Uint8ClampedArray(g.width * g.height * 4);
 for (let f = 0; f < g.frames; f++) {
   full.fill(0);
-  drawGrpFrame(g, f, pal, full, g.width, 0, 0);
+  if (process.argv[5] === 'raw') {
+    // UI GRPs store each frame as plain w*h palette indices (no row RLE)
+    const h0 = 6 + f * 8;
+    const fx = g.view.getUint8(h0);
+    const fy = g.view.getUint8(h0 + 1);
+    const fw = g.view.getUint8(h0 + 2);
+    const fh = g.view.getUint8(h0 + 3);
+    const off = g.view.getUint32(h0 + 4, true);
+    for (let y = 0; y < fh; y++)
+      for (let x = 0; x < fw; x++) {
+        const c = g.buf[off + y * fw + x];
+        if (!c) continue;
+        full.set([pal[c * 4], pal[c * 4 + 1], pal[c * 4 + 2], 255], ((fy + y) * g.width + fx + x) * 4);
+      }
+  } else drawGrpFrame(g, f, pal, full, g.width, 0, 0);
   const ox = (f % cols) * cw + 2;
   const oy = Math.floor(f / cols) * ch + 2;
   for (let y = 0; y < ch - 4; y++)

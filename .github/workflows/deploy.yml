@@ -32,11 +32,10 @@ jobs:
           BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
       - if: github.ref != 'refs/heads/main'
-        run: node scripts/probe-music.mjs || true
-      - if: github.ref != 'refs/heads/main'
         run: |
           node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('dist/bw/manifest.json'));" || true
-          node --experimental-strip-types scripts/sheet.ts dist/bw dlgs/terran.grp tileset/platform.wpe || true
+          node scripts/probe-music.mjs || true
+          node --experimental-strip-types scripts/sheet.ts dist/bw dlgs/terran.grp tileset/platform.wpe raw || true
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
