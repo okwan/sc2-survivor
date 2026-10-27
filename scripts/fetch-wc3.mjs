@@ -192,6 +192,12 @@ function png(width, height, rgba) {
 
 async function main() {
   await fillCache();
+  // handy when picking sounds and icons for src/wc3/*.ts: WC3_FIND=<regex> lists matching archive paths
+  if (process.env.WC3_FIND && existsSync(join(cacheDir, 'listfile.txt'))) {
+    const re = new RegExp(process.env.WC3_FIND, 'i');
+    const hits = readFileSync(join(cacheDir, 'listfile.txt'), 'latin1').split(/\r?\n/).filter((l) => re.test(l));
+    for (let i = 0; i < hits.length; i += 30) console.log(`fetch-wc3: find ${hits.slice(i, i + 30).join(' ')}`);
+  }
   const W = await import('war3-model');
   const dest = join(outDir, 'wc3');
   const got = [];
