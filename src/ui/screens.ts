@@ -70,8 +70,8 @@ export function showMenu(shell: Shell) {
   const inner = document.createElement('div');
   inner.className = 'menu-inner';
   inner.innerHTML = `
-    <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">A StarCraft fan-made survivors game</div></div>
-    <div class="section-title">Choose your race</div>
+    <div class="title"><h1>KOPRULU SURVIVORS</h1><div class="sub">Azeroth's heroes against the Koprulu sector</div></div>
+    <div class="section-title">Choose your faction</div>
     <div class="races"></div>
     <div class="heroes"></div>
     <div class="section-title">Choose your battlefield</div>
@@ -94,7 +94,7 @@ export function showMenu(shell: Shell) {
         ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
         : 'Right-click or WASD to move · spells cast automatically · F / Space to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
     }</div>
-    <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft and Warcraft are trademarks of Blizzard Entertainment.</div>`;
+    <div class="footer">Each faction unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft and Warcraft are trademarks of Blizzard Entertainment.</div>`;
   menu.append(inner);
   shell.ui.append(menu);
 
@@ -362,7 +362,7 @@ export function showArmory(shell: Shell, race: RaceId) {
   }
   const st = document.createElement('div');
   st.innerHTML = `<div class="section-title" style="margin-top:0">Stash (${rs.stash.length}/${STASH_MAX})</div>`;
-  if (!rs.stash.length) st.innerHTML += '<div class="muted">Kill guardians in their lairs, slay bosses and open supply caches to find gear. Gear is kept per race.</div>';
+  if (!rs.stash.length) st.innerHTML += '<div class="muted">Kill guardians in their lairs, slay bosses and open supply caches to find gear. Gear is kept per faction.</div>';
   for (const it of rs.stash) {
     const d = document.createElement('div');
     d.className = 'item';

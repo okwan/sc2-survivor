@@ -140,5 +140,5 @@ export const PERKS: PerkDef[] = [
   { id: 'life', name: 'Emergency Evac', icon: '🚑', desc: '+1 extra life per level. Revive at half health.', costs: [40, 120], stats: { revives: 1 } },
   { id: 'probe', name: 'Salvage Probe', icon: '🤖', desc: 'A companion drone collects experience beyond your pickup range. Higher levels widen its reach.', costs: [25, 50, 90] },
   { id: 'minerals', name: 'Mining Contract', icon: '💎', desc: 'Start each run with 40 minerals per level.', costs: [10, 20, 40] },
-  { id: 'veteran', name: 'Veteran\'s Lessons', icon: '🎓', desc: '+20% talent experience for races behind your best race.', costs: [30] },
+  { id: 'veteran', name: 'Veteran\'s Lessons', icon: '🎓', desc: '+20% talent experience for factions behind your best faction.', costs: [30] },
 ];
