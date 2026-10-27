@@ -13,6 +13,7 @@ import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair,
 import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import type { Input } from './input';
+import { spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
 const WORLD = 4000; // half-size: world spans -WORLD..WORLD
@@ -767,7 +768,7 @@ export class Game {
       zone: this.zone,
       race: this.race.id,
       endless: this.endless,
-      damage: this.spells.map((s) => ({ name: s.def.name, icon: s.def.icon, dmg: s.dmgDone })).sort((a, b) => b.dmg - a.dmg),
+      damage: this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })).sort((a, b) => b.dmg - a.dmg),
     });
   }
 

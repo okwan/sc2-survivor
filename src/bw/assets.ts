@@ -2,6 +2,7 @@ import { Rectangle, Texture, type Sprite } from 'pixi.js';
 import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
 import { BW_TERRAIN_FILES, terrainFilesFor, terrainTexture } from './terrain';
+import { BW_UI_FILES } from './ui-files';
 import { normalizePath, readZip } from './zip';
 
 /**
@@ -131,6 +132,17 @@ export function bwStatus() {
   return status;
 }
 
+/** A raw Brood War file if it is loaded. */
+export function bwFile(path: string): Uint8Array | undefined {
+  return store.get(path);
+}
+
+/** The base 256-colour RGBA palette, if any palette is loaded. */
+export function bwPalette(): Uint8Array | undefined {
+  const p = PALETTES.find((x) => store.has(x));
+  return p ? store.get(p) : undefined;
+}
+
 export function bwSprite(key: string): BwSprite | undefined {
   return registry.get(key);
 }
@@ -160,7 +172,7 @@ export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number
 
 // ------------------------------------------------------------ file intake
 const DOODAD_FILES = () => Object.values(BW_DOODADS).flatMap((l) => l.flatMap(([a, b]) => (b ? [a, b] : [a])));
-const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES];
+const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES, ...BW_UI_FILES];
 
 function wanted(path: string): string | null {
   for (const p of ALL_FILES()) if (path.endsWith(p)) return p;

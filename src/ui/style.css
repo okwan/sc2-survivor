@@ -303,3 +303,46 @@ kbd {
 .touch-dash { position: absolute; right: 18px; bottom: 120px; width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--accent); background: rgba(0, 0, 0, 0.5); font-weight: 800; pointer-events: auto; }
 a { color: var(--accent); }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }
+
+/* ---------------------------------------------------------- Brood War chrome (when the art is loaded) */
+html.bw-cursor, html.bw-cursor * { cursor: var(--bw-cursor) !important; }
+html.bw-menu .menu {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.75)),
+    var(--bw-menu-bg) center / cover no-repeat,
+    #000;
+}
+.bwic { width: 36px; height: 34px; image-rendering: pixelated; display: block; }
+.slot .bwic { width: 100%; height: auto; }
+.card .ic .bwic, .dmgrow .bwic { display: inline-block; vertical-align: middle; }
+.dmgrow .bwic { width: 24px; height: auto; }
+
+.hud.bwmode .vitals, .hud.bwmode .spells, .hud.bwmode .dash, .hud.bwmode .pausebtn { display: none; }
+.bwconsole {
+  position: absolute; left: 50%; bottom: 0; width: 640px;
+  transform-origin: 50% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  color: #dfe8d0;
+}
+.bwmm { position: absolute; left: 6px; top: 58px; width: 128px; height: 128px; image-rendering: pixelated; }
+.bwportrait { position: absolute; left: 415px; top: 119px; width: 56px; height: 56px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.bwwire { width: 64px; height: 64px; image-rendering: pixelated; flex: none; }
+.bwstatus { position: absolute; left: 162px; top: 103px; width: 232px; font-size: 10px; line-height: 1.15; text-shadow: 0 1px 0 #000; }
+.bwstatus .nm { font-weight: 700; font-size: 12px; color: #fff; display: flex; justify-content: space-between; margin-bottom: 3px; }
+.bwstatus .nm span { color: #c8ff6a; font-size: 10px; }
+.bwstatus .bar { position: relative; height: 5px; background: #101810; border: 1px solid #2c3c2c; margin-top: 2px; }
+.bwstatus .bar i { position: absolute; left: 0; top: 0; bottom: 0; }
+.bwstatus .bar.hp i { background: #2cd83c; }
+.bwstatus .bar.sh i { background: #3c9cff; }
+.bwstatus .bar.xp i { background: #9a6cff; }
+.bwstatus .v { font-size: 9px; text-align: right; margin-top: -1px; }
+.bwstatus .v.hp { color: #5cff5c; }
+.bwstatus .v.sh { color: #8cc8ff; }
+.bwstatus .row { display: flex; justify-content: space-between; margin-top: 4px; color: #e8e8c8; }
+.bwstatus .row .min { color: #8ad8ff; }
+.bwcmd { position: absolute; width: 36px; height: 34px; overflow: hidden; pointer-events: auto; }
+.bwcmd img { display: block; width: 36px; height: 34px; image-rendering: pixelated; }
+.bwcmd .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); }
+.bwcmd .rk { position: absolute; right: 2px; bottom: 0; font-size: 9px; font-weight: 800; color: var(--gold); text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.bwcmd.click:hover img { filter: brightness(1.5); }

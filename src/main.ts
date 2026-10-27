@@ -8,6 +8,7 @@ import { grantRewards } from './meta/rewards';
 import { save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
+import { applyBwChrome } from './bw/ui';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -26,6 +27,7 @@ async function boot() {
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
   await initBw();
+  applyBwChrome();
   prefetchTerrain(ZONES.map((z) => z.id));
   setVolume(save.settings.volume);
 

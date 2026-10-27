@@ -1,3 +1,4 @@
+import { spellIcon } from '../bw/ui';
 import { PASSIVES, type PassiveDef } from '../data/items';
 import { MAX_RANK, MAX_SPELLS, SPELLS, SPELL_BY_ID, SPELL_STAT_LABELS, spellStatsAtRank, type SpellDef, type SpellStats } from '../data/spells';
 import { RARITY_MULT, fmtStat, type Rarity } from '../data/types';
@@ -82,7 +83,7 @@ export function describeCard(g: Game, c: Card): CardView {
       const lines = [`Damage ${Math.round(st.damage * (1 + RARITY_SPELL_BONUS[c.rarity]))}`];
       if (c.def.kind !== 'orbit' && c.def.kind !== 'aura') lines.push(`Cooldown ${fmtNum('cooldown', st.cooldown)}`);
       if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
-      return { title: c.def.name, icon: c.def.icon, type: 'New Spell', lines, desc: c.def.desc };
+      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: 'New Spell', lines, desc: c.def.desc };
     }
     case 'upgrade': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
@@ -95,7 +96,7 @@ export function describeCard(g: Game, c: Card): CardView {
         if (Math.abs(a[k] - b[k]) > 1e-6) lines.push(`${SPELL_STAT_LABELS[k]} ${fmtNum(k, a[k])} → ${fmtNum(k, b[k])}`);
       }
       if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
-      return { title: c.def.name, icon: c.def.icon, type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc };
+      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc };
     }
     case 'passive': {
       const v = c.def.noScale ? c.def.value : c.def.value * RARITY_MULT[c.rarity];

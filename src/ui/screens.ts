@@ -1,5 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
+import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -387,6 +388,8 @@ export function showGraphics(shell: Shell, message = '') {
       const res = buildSprites(got);
       if (!res.loaded) throw new Error('No unit sprites found. Make sure the unit folder is included.');
       await storeFiles(got);
+      resetBwUi();
+      applyBwChrome();
       sfx('level');
       showGraphics(shell);
     } catch (e) {
@@ -398,6 +401,8 @@ export function showGraphics(shell: Shell, message = '') {
   const clr = box.querySelector<HTMLButtonElement>('[data-clear]');
   if (clr) clr.onclick = async () => {
     await clearStoredFiles();
+    resetBwUi();
+    applyBwChrome();
     showGraphics(shell);
   };
   box.ondragover = (e) => {
@@ -518,7 +523,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     }
     const build = document.createElement('div');
     build.className = 'build-list';
-    build.innerHTML = g.spells.map((s) => `<span class="slot" title="${s.def.name}" style="width:38px;height:38px;font-size:20px">${s.def.icon}<span class="rk">${s.rank === MAX_RANK ? 'MAX' : s.rank}</span></span>`).join('');
+    build.innerHTML = g.spells.map((s) => `<span class="slot" title="${s.def.name}" style="width:38px;height:38px;font-size:20px">${spellIcon(s.def.id, s.def.icon)}<span class="rk">${s.rank === MAX_RANK ? 'MAX' : s.rank}</span></span>`).join('');
     box.append(acts, build);
     o.append(box);
   };
@@ -592,7 +597,7 @@ export function showPause(shell: Shell, g: Game, onResume: () => void) {
     })
     .join('');
   box.innerHTML = `<h2>Paused</h2>
-    <div class="build-list">${g.spells.map((sp) => `<span class="slot" title="${sp.def.name}">${sp.def.icon}<span class="rk">${sp.rank}</span></span>`).join('')}</div>
+    <div class="build-list">${g.spells.map((sp) => `<span class="slot" title="${sp.def.name}">${spellIcon(sp.def.id, sp.def.icon)}<span class="rk">${sp.rank}</span></span>`).join('')}</div>
     <div class="results"><table>${statRows}</table></div>`;
   box.append(settingsHtml());
   const row = document.createElement('div');
