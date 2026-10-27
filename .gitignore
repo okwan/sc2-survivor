@@ -3,3 +3,4 @@ dist
 .DS_Store
 dist-single
 bwprev
+.wc3-cache

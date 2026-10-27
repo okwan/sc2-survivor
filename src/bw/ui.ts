@@ -2,6 +2,8 @@ import { bwFile, bwPalette } from './assets';
 import { decodePcx } from './formats';
 import { drawGrpFrame, parseGrp, type GrpFile } from './grp';
 import { BW_UI, ICONS, SPELL_ICONS } from './ui-files';
+import { WC3_SPELL_ICONS } from '../wc3/assets';
+import { wc3IconUrl } from '../wc3/sprites';
 
 /**
  * Brood War interface art for the DOM HUD and menus: the race consoles, command card icons,
@@ -247,9 +249,10 @@ export function applyBwChrome(race = 'terran') {
   else root.style.removeProperty('--bw-menu-bg');
 }
 
-/** HTML for a spell's icon: the Brood War command icon when loaded, otherwise its emoji. */
+/** HTML for a spell's icon: its Warcraft III icon, else the Brood War command icon, else its emoji. */
 export function spellIcon(id: string, emoji: string): string {
-  return frameIcon(SPELL_ICONS[id], emoji);
+  const wc3 = wc3IconUrl(WC3_SPELL_ICONS[id]);
+  return wc3 ? `<img class="bwic wc3ic" src="${wc3}" alt="">` : frameIcon(SPELL_ICONS[id], emoji);
 }
 
 /** HTML for a passive, perk, talent tree or other icon by game id (see ICONS), or its emoji. */
