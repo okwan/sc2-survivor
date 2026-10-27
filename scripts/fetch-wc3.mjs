@@ -159,7 +159,7 @@ async function fillCache() {
 const slash = (p) => p.replace(/\\/g, '/');
 
 // WC3 lights team color areas (capes, banners) but the renderer draws them flat, so use deep shades
-const TEAM_COLORS = { Human: [0.08, 0.22, 0.62], Undead: [0.32, 0.1, 0.48], Orc: [0.62, 0.1, 0.06], NightElf: [0.06, 0.4, 0.34] };
+const TEAM_COLORS = { Human: [0.06, 0.15, 0.4], Undead: [0.22, 0.08, 0.3], Orc: [0.42, 0.08, 0.05], NightElf: [0.05, 0.26, 0.22] };
 
 function texturesOf(W, mdx) {
   try {
