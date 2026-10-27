@@ -6,7 +6,7 @@ import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
-import { bwSprite, orientBw, type BwSprite } from '../bw/assets';
+import { bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
 import { sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
@@ -203,7 +203,8 @@ export class Game {
   // ------------------------------------------------------------ scene
   private buildScene() {
     const z = this.zone;
-    this.ground = new TilingSprite({ texture: groundTexture(z.ground[0], z.ground[1], z.doodad), width: this.app.screen.width, height: this.app.screen.height });
+    const bwGround = bwTerrain(z.id);
+    this.ground = new TilingSprite({ texture: bwGround ?? groundTexture(z.ground[0], z.ground[1], z.doodad), width: this.app.screen.width, height: this.app.screen.height });
     this.root.addChild(this.ground);
     this.root.addChild(this.world);
     for (const l of Object.values(this.layers)) this.world.addChild(l);
@@ -219,9 +220,19 @@ export class Game {
     border.rect(WORLD, -WORLD, 2000, WORLD * 2).fill({ color: 0x000000, alpha: 0.6 });
     this.layers.ground.addChild(border);
 
-    // scattered props
+    // scattered props: Brood War mineral fields and geysers on BW ground, procedural ones otherwise
+    const bwProps = bwGround ? (['prop:min1', 'prop:min2', 'prop:min3', 'prop:min1', 'prop:geyser'] as const).map((k) => bwSprite(k)).filter((b): b is BwSprite => !!b) : [];
+    for (let i = 0; bwProps.length && i < 140; i++) {
+      const b = bwProps[Math.floor(Math.random() * bwProps.length)];
+      const s = new Sprite(b.frames[0]);
+      s.anchor.set(0.5);
+      s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
+      if (Math.hypot(s.x, s.y) < 260) continue;
+      this.layers.ground.addChild(s);
+      this.props.push(s);
+    }
     const kinds = ['rock', 'rock', 'crystal', 'bones', 'pylon'] as const;
-    for (let i = 0; i < 520; i++) {
+    for (let i = 0; !bwProps.length && i < 520; i++) {
       const k = kinds[Math.floor(Math.random() * kinds.length)];
       const s = new Sprite(propTexture(k, z.doodad, Math.floor(Math.random() * 6)));
       s.anchor.set(0.5);

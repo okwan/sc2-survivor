@@ -302,3 +302,4 @@ kbd {
 .joystick .knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; border-radius: 50%; background: rgba(79, 210, 255, 0.4); border: 2px solid rgba(255, 255, 255, 0.5); transform: translate(-50%, -50%); }
 .touch-dash { position: absolute; right: 18px; bottom: 120px; width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--accent); background: rgba(0, 0, 0, 0.5); font-weight: 800; pointer-events: auto; }
 a { color: var(--accent); }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }

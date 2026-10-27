@@ -20,9 +20,10 @@ const MIRRORS = [
 const outDir = process.argv[2] ?? 'dist';
 const localSource = process.argv[3];
 
-// the file list lives in src/bw/assets.ts; keep one source of truth
-const assetsSrc = readFileSync(new URL('../src/bw/assets.ts', import.meta.url), 'utf8');
-const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset)\/[\w/]+\.(?:grp|wpe))'/g)].map((m) => m[1]))];
+// the file lists live in src/bw/*.ts as quoted literal paths; keep one source of truth
+const srcDir = new URL('../src/bw/', import.meta.url);
+const assetsSrc = readdirSync(srcDir).filter((n) => n.endsWith('.ts')).map((n) => readFileSync(new URL(n, srcDir), 'utf8')).join('\n');
+const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset|game|glue|font|cursor)\/[\w/]+\.(?:grp|wpe|cv5|vx4|vr4|pcx|fnt))'/g)].map((m) => m[1]))];
 
 function findMpqs(dir) {
   const out = {};
@@ -79,7 +80,7 @@ function inventory(archives, order) {
     for (const a of archives) {
       if (!a.hasFile(p)) continue;
       const f = a.openFile(p);
-      const d = f.read();
+      const d = f.read().slice();
       f.close();
       return d;
     }
@@ -153,7 +154,7 @@ async function main() {
   for (const n of order) archives.push(await MPQ.open('/bw' + mpqs[n], 'r'));
   const got = [];
   const looksValid = (path, d) => {
-    if (!path.endsWith('.grp')) return d.length >= 768;
+    if (!path.endsWith('.grp')) return d.length >= 64;
     const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
     const n = d.length >= 6 ? v.getUint16(0, true) : 0;
     return n > 0 && n < 2048 && v.getUint16(2, true) > 0 && v.getUint16(4, true) > 0 && 6 + n * 8 <= d.length;
@@ -163,7 +164,7 @@ async function main() {
     for (const [i, a] of archives.entries()) {
       if (!a.hasFile(mpqPath)) continue;
       const f = a.openFile(mpqPath);
-      const data = f.read();
+      const data = f.read().slice(); // copy out of the WASM heap before close() frees it
       f.close();
       if (!looksValid(path, data)) {
         console.warn(`fetch-bw: ${path} in ${order[i]} is not a valid file (${data.length} bytes), trying the next archive`);

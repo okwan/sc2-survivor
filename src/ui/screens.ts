@@ -15,7 +15,7 @@ import { fmtTime } from './hud';
 
 export interface Shell {
   ui: HTMLElement;
-  startRun(race: RaceId, zoneId: string): void;
+  startRun(race: RaceId, zoneId: string): void | Promise<void>;
   quitRun(): void;
   heroPreview(race: RaceId): HTMLCanvasElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;

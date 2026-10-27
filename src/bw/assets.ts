@@ -1,6 +1,7 @@
 import { Rectangle, Texture, type Sprite } from 'pixi.js';
 import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
+import { BW_TERRAIN_FILES, terrainFilesFor, terrainTexture } from './terrain';
 import { normalizePath, readZip } from './zip';
 
 /**
@@ -34,6 +35,10 @@ export const BW_UNITS: Record<string, string> = {
   'minion:interceptor': 'unit/protoss/intercep.grp',
   'minion:probe': 'unit/protoss/probe.grp',
   'minion:turret': 'unit/terran/tankt.grp',
+  'prop:min1': 'unit/neutral/min01.grp',
+  'prop:min2': 'unit/neutral/min02.grp',
+  'prop:min3': 'unit/neutral/min03.grp',
+  'prop:geyser': 'unit/neutral/geyser.grp',
 };
 
 const PALETTES = ['tileset/platform.wpe', 'tileset/badlands.wpe', 'tileset/jungle.wpe', 'tileset/install.wpe', 'tileset/ashworld.wpe', 'tileset/desert.wpe', 'tileset/ice.wpe', 'tileset/twilight.wpe'];
@@ -51,6 +56,9 @@ export interface BwSprite {
 }
 
 const registry = new Map<string, BwSprite>();
+/** Every Brood War file currently available (player's own or bundled with the site). */
+let store = new Map<string, Uint8Array>();
+const LAZY = /\.(cv5|vx4|vr4)$/; // big tileset files, fetched per zone when a run starts
 type BwSource = 'local' | 'bundled' | null;
 let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
@@ -78,9 +86,10 @@ export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number
 }
 
 // ------------------------------------------------------------ file intake
+const ALL_FILES = () => [...new Set(Object.values(BW_UNITS)), ...PALETTES, ...BW_TERRAIN_FILES];
+
 function wanted(path: string): string | null {
-  for (const p of [...new Set(Object.values(BW_UNITS))]) if (path.endsWith(p)) return p;
-  for (const p of PALETTES) if (path.endsWith(p)) return p;
+  for (const p of ALL_FILES()) if (path.endsWith(p)) return p;
   return null;
 }
 
@@ -89,7 +98,7 @@ export async function ingestFiles(files: File[]): Promise<Map<string, Uint8Array
   // A StarCraft: Remastered install folder: read straight from its CASC storage
   if (files.some((f) => /^[0-9a-f]{10}\.idx$/i.test(f.name))) {
     const casc = await CascStorage.open(files);
-    const wantedPaths = [...new Set(Object.values(BW_UNITS)), ...PALETTES];
+    const wantedPaths = ALL_FILES();
     const got = await casc.readFiles(wantedPaths);
     if (!got.size) throw new Error(`Opened the StarCraft data (${casc.root.size} files) but found none of the unit sprites.`);
     return got;
@@ -106,7 +115,7 @@ export async function ingestFiles(files: File[]): Promise<Map<string, Uint8Array
     // loose files picked without folders: match by file name alone
     if (!key) {
       const base = name.split('/').pop()!;
-      key = [...Object.values(BW_UNITS), ...PALETTES].find((p) => p.endsWith('/' + base)) ?? null;
+      key = ALL_FILES().find((p) => p.endsWith('/' + base)) ?? null;
     }
     if (key) out.set(key, new Uint8Array(await f.arrayBuffer()));
   }
@@ -167,6 +176,7 @@ export async function clearStoredFiles() {
   for (const s of registry.values()) for (const f of s.frames) f.destroy();
   registry.clear();
   status = { loaded: false, count: 0, missing: [], source: null };
+  store = new Map();
   await loadBundled();
 }
 
@@ -185,6 +195,7 @@ export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 
   }
   for (const s of registry.values()) for (const f of s.frames) f.destroy();
   registry.clear();
+  store = files;
   const missing: string[] = [];
   for (const [key, path] of Object.entries(BW_UNITS)) {
     const buf = files.get(path);
@@ -240,14 +251,17 @@ export async function initBw(): Promise<void> {
   await loadBundled();
 }
 
+let bundledPaths = new Set<string>();
+
 async function loadBundled() {
   try {
     const res = await fetch('bw/manifest.json');
     if (!res.ok) return;
     const { files: paths } = (await res.json()) as { files: string[] };
+    bundledPaths = new Set(paths);
     const got = new Map<string, Uint8Array>();
     await Promise.all(
-      paths.map(async (p) => {
+      paths.filter((p) => !LAZY.test(p)).map(async (p) => {
         const r = await fetch('bw/' + p);
         if (r.ok) got.set(p, new Uint8Array(await r.arrayBuffer()));
       }),
@@ -255,5 +269,34 @@ async function loadBundled() {
     buildSprites(got, 'bundled');
   } catch {
     /* no bundled sprites (e.g. the single-file preview): placeholder art */
+  }
+}
+
+/** Fetches the tileset files a zone needs if the site ships them and they aren't loaded yet. */
+export async function ensureZoneFiles(zoneId: string): Promise<void> {
+  const need = terrainFilesFor(zoneId).filter((p) => !store.has(p) && bundledPaths.has(p));
+  await Promise.all(
+    need.map(async (p) => {
+      try {
+        const r = await fetch('bw/' + p);
+        if (r.ok) store.set(p, new Uint8Array(await r.arrayBuffer()));
+      } catch {
+        /* keep the procedural ground */
+      }
+    }),
+  );
+}
+
+/** Starts downloading every zone's tileset in the background so runs start instantly. */
+export function prefetchTerrain(zoneIds: string[]) {
+  zoneIds.reduce((p, z) => p.then(() => ensureZoneFiles(z)), Promise.resolve());
+}
+
+/** The zone's Brood War ground texture, or null to use the procedural one. */
+export function bwTerrain(zoneId: string) {
+  try {
+    return terrainTexture(zoneId, store);
+  } catch {
+    return null;
   }
 }

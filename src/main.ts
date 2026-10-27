@@ -1,5 +1,5 @@
 import { Application, Sprite } from 'pixi.js';
-import { ZONE_BY_ID } from './data/enemies';
+import { ZONE_BY_ID, ZONES } from './data/enemies';
 import type { RaceId } from './data/types';
 import { setVolume, unlockAudio } from './game/audio';
 import { Game } from './game/game';
@@ -7,7 +7,7 @@ import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
 import { save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
-import { bwSprite, initBw } from './bw/assets';
+import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -26,6 +26,7 @@ async function boot() {
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
   await initBw();
+  prefetchTerrain(ZONES.map((z) => z.id));
   setVolume(save.settings.volume);
 
   const input = new Input(app.canvas);
@@ -79,11 +80,13 @@ async function boot() {
       copy.getContext('2d')!.drawImage(cv, 0, 0);
       return copy;
     },
-    startRun(race, zoneId) {
+    async startRun(race, zoneId) {
       unlockAudio();
       shell.quitRun();
-      ui.innerHTML = '';
+      ui.innerHTML = '<div class="loading">Warping in...</div>';
       const zone = ZONE_BY_ID[zoneId] ?? ZONE_BY_ID.marsara;
+      await ensureZoneFiles(zone.id);
+      ui.innerHTML = '';
       const g: Game = new Game(app, input, race, zone, {
         levelUp: () => showLevelUp(shell, g, resume),
         gear: (item) => showGear(shell, g, item, resume),
