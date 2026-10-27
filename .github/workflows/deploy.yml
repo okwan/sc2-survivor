@@ -24,15 +24,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # ffmpeg compresses StarCraft's soundtrack to MP3 in the fetch step
-      # (no man-db rebuild and no recommends: those make the install stall for minutes)
-      - run: |
-          echo 'set man-db/auto-update false' | sudo debconf-communicate > /dev/null
-          sudo rm -f /var/lib/man-db/auto-update
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
-        timeout-minutes: 6
-        continue-on-error: true
       - run: npm run build
       # Brood War sprites are downloaded at deploy time and served with the site; the repo holds none.
       - run: node scripts/fetch-bw.mjs dist
@@ -40,10 +31,6 @@ jobs:
           NODE_ENV: production
           BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
-      - if: github.ref != 'refs/heads/main'
-        run: |
-          for f in dlgs/tile.grp; do echo "b64 $f $(base64 -w0 dist/bw/$f)"; done || true
-          which ffmpeg || echo "no ffmpeg"
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:

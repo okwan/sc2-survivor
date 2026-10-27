@@ -373,16 +373,11 @@ function logIcons(read) {
 // ------------------------------------------------------------ music
 // The soundtrack isn't in the Brood War download above (its music\*.wav are sub-second stubs).
 // The Brood War CD's INSTALL.EXE is itself an MPQ holding the full tracks; we pull those out and
-// compress them to MP3 with ffmpeg so the site can stream them.
+// compress them to MP3 (lamejs, so the build needs no system tools) so the site can stream them.
 const MUSIC_URL = process.env.BW_MUSIC_URL || 'https://archive.org/download/starcraft-expansion-set-brood-war/INSTALL.EXE';
 const TRACKS = ['title', 'terran1', 'terran2', 'terran3', 'zerg1', 'zerg2', 'zerg3', 'protoss1', 'protoss2', 'protoss3', 'tdefeat', 'zdefeat', 'pdefeat', 'trdyroom', 'zrdyroom', 'prdyroom'];
 
 async function buildMusic(MPQ, outDir, got) {
-  try {
-    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-  } catch {
-    return console.warn('fetch-bw: no ffmpeg, skipping music');
-  }
   const dir = mkdtempSync(join(tmpdir(), 'bwm-'));
   const cd = join(dir, 'install.exe');
   console.log(`fetch-bw: downloading ${MUSIC_URL}`);
@@ -402,16 +397,20 @@ async function buildMusic(MPQ, outDir, got) {
   }
   a.close();
   mkdirSync(join(outDir, 'bw', 'music'), { recursive: true });
-  // a few encoders at once
+  // a few encoders at once, one worker thread each
   const queue = [...wavs];
-  const { execFile } = await import('node:child_process');
-  const run = (args) => new Promise((res, rej) => execFile('ffmpeg', args, (e) => (e ? rej(e) : res())));
+  const { Worker } = await import('node:worker_threads');
+  const encode = (workerData) =>
+    new Promise((res, rej) => {
+      const w = new Worker(new URL('./mp3-worker.mjs', import.meta.url), { workerData });
+      w.on('error', rej);
+      w.on('exit', (c) => (c ? rej(new Error(`mp3 worker exited ${c}`)) : res()));
+    });
   await Promise.all(
     [0, 1, 2, 3].map(async () => {
       for (let job = queue.shift(); job; job = queue.shift()) {
         const [t, wav] = job;
-        const out = join(outDir, 'bw', 'music', `${t}.mp3`);
-        await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-q:a', '6', out]);
+        await encode({ wav, mp3: join(outDir, 'bw', 'music', `${t}.mp3`), kbps: 96 });
         got.push(`music/${t}.mp3`);
       }
     }),

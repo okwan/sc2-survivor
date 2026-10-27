@@ -177,11 +177,68 @@ export function menuBgUrl(): string | null {
   });
 }
 
-/** Puts the cursor and menu backdrop on the page (CSS variables used by style.css). */
-export function applyBwChrome() {
+/**
+ * One piece of a race's dialog art (dlgs\<race>.grp). Unlike unit GRPs these frames are stored
+ * uncompressed: w*h palette indices at the frame offset, 0 transparent.
+ */
+function dialogUrl(race: string, frame: number): string | null {
+  return cached(`dlg:${race}#${frame}`, () => {
+    const buf = bwFile(BW_UI.dialog[race] ?? '');
+    const pal = bwPalette();
+    if (!buf || !pal) return null;
+    const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    if (frame >= v.getUint16(0, true)) return null;
+    const h = 6 + frame * 8;
+    const w = v.getUint8(h + 2);
+    const ht = v.getUint8(h + 3);
+    const off = v.getUint32(h + 4, true);
+    if (off + w * ht > buf.length) return null;
+    const cv = canvas(w, ht);
+    const ctx = cv.getContext('2d')!;
+    const img = ctx.createImageData(w, ht);
+    for (let i = 0; i < w * ht; i++) {
+      const c = buf[off + i];
+      if (c) img.data.set([pal[c * 4], pal[c * 4 + 1], pal[c * 4 + 2], 255], i * 4);
+    }
+    ctx.putImageData(img, 0, 0);
+    return cv.toDataURL();
+  });
+}
+
+/** The 3x3 box StarCraft draws tooltips and text boxes with (dlgs\tile.grp, 8x8 pieces), as one 24x24 image. */
+function boxUrl(): string | null {
+  return cached('dlgbox', () => {
+    const buf = bwFile(BW_UI.dialogTile);
+    const g = buf ? parseGrp(buf) : null;
+    const pal = bwPalette();
+    if (!g || !pal || g.frames < 9) return null;
+    const cv = canvas(24, 24);
+    const ctx = cv.getContext('2d')!;
+    const img = ctx.createImageData(24, 24);
+    for (let i = 0; i < 9; i++) drawGrpFrame(g, i, pal, img.data, 24, (i % 3) * 8, Math.floor(i / 3) * 8);
+    ctx.putImageData(img, 0, 0);
+    return cv.toDataURL();
+  });
+}
+
+/** Frames of a race's dialog GRP used for buttons: dull, normal, lit (hazard stripes). */
+const BUTTON = { off: 0, on: 1, hover: 2 };
+
+/**
+ * Puts the cursor, menu backdrop and dialog art on the page (CSS variables used by style.css).
+ * Buttons take the metal plates of `race`'s dialogs, like the in-game menus do.
+ */
+export function applyBwChrome(race = 'terran') {
   const root = document.documentElement;
   const cur = cursorCss();
   const bg = menuBgUrl();
+  const box = boxUrl();
+  const btn = Object.fromEntries(Object.entries(BUTTON).map(([k, f]) => [k, dialogUrl(race, f)]));
+  root.classList.toggle('bw-box', !!box);
+  if (box) root.style.setProperty('--bw-box', `url(${box})`);
+  const hasBtn = !!(btn.off && btn.on && btn.hover);
+  root.classList.toggle('bw-btn', hasBtn);
+  if (hasBtn) for (const [k, u] of Object.entries(btn)) root.style.setProperty(`--bw-btn-${k}`, `url(${u})`);
   root.classList.toggle('bw-cursor', !!cur);
   if (cur) root.style.setProperty('--bw-cursor', cur);
   else root.style.removeProperty('--bw-cursor');

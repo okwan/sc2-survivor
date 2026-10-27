@@ -109,6 +109,7 @@ async function boot() {
       shell.quitRun();
       ui.innerHTML = '<div class="loading">Warping in...</div>';
       const zone = ZONE_BY_ID[zoneId] ?? ZONE_BY_ID.marsara;
+      applyBwChrome(race);
       // the race's three battle themes, starting at a random one
       const first = Math.floor(Math.random() * 3);
       playMusic([0, 1, 2].map((i) => `${race}${((first + i) % 3) + 1}`));

@@ -352,6 +352,28 @@ a { color: var(--accent); }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }
 
 /* ---------------------------------------------------------- Brood War chrome (when the art is loaded) */
+/* buttons are the metal plates of the race's dialogs; panels the box StarCraft draws tooltips with */
+html.bw-btn .btn {
+  background: none;
+  border: 6px solid transparent;
+  border-image: var(--bw-btn-on) 6 8 fill / 6px 8px / 0 round;
+  padding: 6px 14px;
+  clip-path: none;
+  color: #c8d8ff;
+  text-shadow: 0 1px 0 #000, 0 0 3px #000;
+  image-rendering: pixelated;
+}
+html.bw-btn .btn:hover:not(:disabled) { border-image-source: var(--bw-btn-hover); color: #fff; filter: none; }
+html.bw-btn .btn.primary { color: #ffe060; }
+html.bw-btn .btn.danger { color: #ff7a6a; }
+html.bw-btn .btn:disabled { border-image-source: var(--bw-btn-off); color: #6c7484; filter: none; }
+html.bw-box .panel {
+  background: none;
+  border: 8px solid transparent;
+  border-image: var(--bw-box) 8 fill / 8px round;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
 html.bw-cursor, html.bw-cursor * { cursor: var(--bw-cursor) !important; }
 html.bw-menu .menu {
   background:
