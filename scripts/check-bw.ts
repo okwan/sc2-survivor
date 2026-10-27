@@ -37,6 +37,20 @@ for (const f of manifest.files.filter((p) => p.endsWith('.grp'))) {
       const h0 = 6 + i * 8;
       return `${i}:${g.view.getUint8(h0)},${g.view.getUint8(h0 + 1)} ${g.view.getUint8(h0 + 2)}x${g.view.getUint8(h0 + 3)}`;
     }).join(' '));
+  if (f === 'dlgs/terran.grp')
+    for (const fr of [...Array.from({ length: 24 }, (_, i) => 11 + i), 0, 1, 2]) {
+      const px2 = new Uint8ClampedArray(g.width * g.height * 4);
+      drawGrpFrame(g, fr, pal, px2, g.width, 0, 0);
+      console.log(`check-bw: dlg frame ${fr}`);
+      for (let y = 0; y < 26; y++) {
+        let row = '';
+        for (let x = 0; x < 66; x++) {
+          const i = (y * g.width + x) * 4;
+          row += px2[i + 3] ? shades[Math.min(9, 1 + Math.floor(((px2[i] + px2[i + 1] + px2[i + 2]) / 765) * 9))] : ' ';
+        }
+        if (row.trim()) console.log('  |' + row + '|');
+      }
+    }
   if (!preview.has(f)) continue;
   for (let y = 0; y < g.height; y++) {
     let row = '';
