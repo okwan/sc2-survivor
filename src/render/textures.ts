@@ -1,5 +1,5 @@
 import { Graphics, Texture, type Renderer } from 'pixi.js';
-import type { EnemyShape } from '../data/enemies';
+import { SHAPE_INFO, type EnemyShape } from '../data/enemies';
 import type { RaceId } from '../data/types';
 
 /**
@@ -230,7 +230,7 @@ export function enemyTexture(shape: EnemyShape, color: number, radius: number): 
     const dark = shade(color, 0.55);
     const light = shade(color, 1.35);
     const line = { width: Math.max(1.5, r * 0.1), color: dark };
-    switch (shape) {
+    switch (SHAPE_INFO[shape]?.drawAs ?? shape) {
       case 'ling':
       case 'broodling': {
         g.poly([-r, -r * 0.2, -r * 1.3, -r * 0.9, -r * 0.4, -r * 0.4]).fill(dark);

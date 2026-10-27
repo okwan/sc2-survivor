@@ -278,6 +278,13 @@ kbd {
 .hud .toasts { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { padding: 6px 16px; background: rgba(0, 0, 0, 0.7); border: 1px solid #3a5a7a; font-weight: 700; font-size: 16px; animation: toast 2.6s forwards; white-space: nowrap; }
 @keyframes toast { 0% { opacity: 0; transform: translateY(-8px); } 8% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.hud .raid-warnings { position: absolute; top: 24%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.raid-warning { color: #ff4a3a; font-weight: 800; font-size: clamp(18px, 2.6vw, 30px); text-align: center; padding: 0 16px; text-shadow: 0 0 2px #000, 2px 2px 0 #000, 0 0 14px rgba(255, 40, 20, 0.6); animation: raidwarn 4s forwards; }
+@keyframes raidwarn { 0% { transform: scale(1.35); opacity: 0; } 8% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.bossbar .cast { display: none; position: relative; height: 14px; margin-top: 3px; background: rgba(0, 0, 0, 0.6); border: 1px solid #6a4a1a; }
+.bossbar .cast.on { display: block; }
+.bossbar .cast i { position: absolute; inset: 0; background: linear-gradient(#ffcf40, #c08010); transform-origin: left; }
+.bossbar .cast span { position: relative; display: block; text-align: center; font-size: 11px; line-height: 14px; font-weight: 700; color: #fff; text-shadow: 1px 1px 0 #000; }
 .boss-banner { position: absolute; top: 34%; left: 0; right: 0; text-align: center; animation: banner 3s forwards; }
 .boss-banner h2 { font-size: clamp(30px, 6vw, 56px); color: #ff5050; text-shadow: 0 0 20px #f00; }
 .boss-banner div { color: var(--gold); letter-spacing: 0.3em; text-transform: uppercase; }
