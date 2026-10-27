@@ -147,7 +147,7 @@ export function showMenu(shell: Shell) {
     b.className = 'zone' + (z.id === save.lastZone && !locked ? ' sel' : '') + (locked ? ' locked' : '');
     const best = rs.bestTimes[z.id];
     const cleared = i < rs.zonesCleared;
-    b.innerHTML = `<h3>${locked ? '🔒 ' : cleared ? '✔ ' : ''}${z.name}</h3><div class="meta">Final boss at ${z.minutes}:00 · Threat ${'★'.repeat(i + 1)}${best ? ` · Best ${fmtTime(best)}` : ''}</div><p>${locked ? `Clear ${ZONES[i - 1].name} with the ${RACE_DEFS[race].name} to unlock.` : z.desc}</p>`;
+    b.innerHTML = `<h3>${locked ? '🔒 ' : cleared ? '✔ ' : ''}${z.name}</h3><div class="meta">Final boss at ${fmtTime(z.minutes * 60)} · Threat ${'★'.repeat(i + 1)}${best ? ` · Best ${fmtTime(best)}` : ''}</div><p>${locked ? `Clear ${ZONES[i - 1].name} with the ${RACE_DEFS[race].name} to unlock.` : z.desc}</p>`;
     b.onclick = () => {
       if (locked) return;
       save.lastZone = z.id;
@@ -829,7 +829,7 @@ export function showVictory(shell: Shell, g: Game, onContinue: () => void) {
   const box = document.createElement('div');
   box.className = 'panel modal';
   box.style.textAlign = 'center';
-  box.innerHTML = `<h2 class="gold">${g.zone.name} cleared!</h2><p>${g.zone.final.name} has fallen. Extract now with your rewards, or stay for endless mode where bosses return every two minutes.</p>`;
+  box.innerHTML = `<h2 class="gold">${g.zone.name} cleared!</h2><p>${g.bosses.some((b) => b.boss?.final) ? 'You held out until the bell.' : `${g.zone.final.name} has fallen.`} Extract now with your rewards, or stay for endless mode where bosses return every 2:15.</p>`;
   const row = document.createElement('div');
   row.className = 'row';
   const ex = document.createElement('button');
