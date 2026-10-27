@@ -144,9 +144,16 @@ async function fillCache() {
       if (near.length) console.warn(`fetch-wc3:   ${p} -> maybe ${near.join(' | ')}`);
     }
   }
-  // keep the archive's file list so later (cached) runs can suggest names for icons that weren't found
-  const listfile = read('(listfile)');
-  if (listfile) writeFileSync(join(cacheDir, 'listfile.txt'), listfile);
+  // keep every archive's file list (merged) so later (cached) runs can suggest names for files that weren't found
+  const names = new Set();
+  for (const a of archives) {
+    if (!a.hasFile('(listfile)')) continue;
+    const f = a.openFile('(listfile)');
+    for (const l of new TextDecoder('latin1').decode(f.read().slice()).split(/\r?\n/)) if (l) names.add(l);
+    f.close();
+  }
+  if (names.size) writeFileSync(join(cacheDir, 'listfile.txt'), [...names].join('\n'));
+  console.log(`fetch-wc3: listfile has ${names.size} names`);
   if (process.env.WC3_LIST_ICONS) {
     // handy when picking ability and item icons for src/wc3/*.ts
     const list = new TextDecoder().decode(read('(listfile)') ?? new Uint8Array());

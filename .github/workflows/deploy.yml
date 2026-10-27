@@ -41,7 +41,7 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
           WC3_ARCHIVE_URL: ${{ vars.WC3_ARCHIVE_URL }}
-          WC3_FIND: '\\(HeroArchMage|HeroBloodElf|HeroMountainKing|HeroDeathKnight|HeroDreadLord|HeroLich|HeroTaurenChieftain|HeroBladeMaster|HeroFarSeer|Combat|Spells\\[^\\]+\\[^\\]+)\\[^\\]+\.wav$'
+          WC3_FIND: '\.(wav|mp3)$'
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
