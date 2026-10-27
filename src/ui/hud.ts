@@ -1,7 +1,7 @@
 import { bwTerrain } from '../bw/assets';
 import { CONSOLE_H, consoleUrl, hasBwConsole, iconUrl, spellIcon, wireframeUrl, type BwTint } from '../bw/ui';
 import { PAUSE_ICON, RACE_UI, SPELL_ICONS } from '../bw/ui-files';
-import type { Game } from '../game/game';
+import { VICTORY_SECS, type Game } from '../game/game';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -109,7 +109,8 @@ export class Hud {
     this.set('lvl', p.level, () => (this.lvl.textContent = `Level ${p.level}`));
     const sec = Math.floor(g.time);
     this.set('time', sec + (g.endless ? 100000 : 0), () => {
-      const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;
+      const nb = g.nextBossAt;
+      const sub = `${g.endless ? 'ENDLESS' : g.zone.name.toUpperCase()} · ${nb !== null ? `NEXT BOSS ${fmtTime(Math.max(0, nb - g.time))}` : `VICTORY ${fmtTime(Math.max(0, VICTORY_SECS - g.time))}`}`;
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
     });
     const obj = g.objectiveText();

@@ -107,20 +107,20 @@ export interface ZoneDef {
   name: string;
   desc: string;
   tier: number; // difficulty multiplier
-  minutes: number; // final boss arrives at this time
+  minutes: number; // final boss arrives at this time (13:30, the sixth boss on the 2:15 clock)
   ground: [number, number]; // ground colors
   doodad: number;
   /** Enemy pools by minute. Later entries take over when minute >= from. */
   waves: { from: number; pool: [string, number][] }[];
   elite: string;
   guardian: string;
-  bosses: BossDef[]; // spawned at 3, 6, 9, 12 minutes
+  bosses: BossDef[]; // spawned at 2:15, 4:30, 6:45 and 9:00; the last two return together at 11:15
   final: BossDef;
 }
 
 export const ZONES: ZoneDef[] = [
   {
-    id: 'marsara', name: 'Mar Sara', desc: 'A dusty frontier colony overrun by the first wave of the Swarm.', tier: 1, minutes: 16,
+    id: 'marsara', name: 'Mar Sara', desc: 'A dusty frontier colony overrun by the first wave of the Swarm.', tier: 1, minutes: 13.5,
     ground: [0x5a4632, 0x4e3c2a], doodad: 0x8a6a4a,
     waves: [
       { from: 0, pool: [['zergling', 10]] },
@@ -140,7 +140,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'bf', name: 'Cerebrate Zasz', title: 'Overmind\'s Voice', shape: 'ultra', color: 0x9a2ad0, hp: 16000, speed: 75, damage: 34, radius: 64, abilities: ['burst', 'summon', 'slam', 'barrage', 'pods'], summon: 'hydralisk', split: ['ultralisk', 2] },
   },
   {
-    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 16,
+    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 13.5,
     ground: [0x3a2420, 0x2c1a18], doodad: 0xff5a20,
     waves: [
       { from: 0, pool: [['zergling', 8], ['broodling', 4]] },
@@ -159,7 +159,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'cf', name: 'Queen of Blades', title: 'Sovereign of the Swarm', shape: 'hydra', color: 0xc040ff, hp: 24000, speed: 110, damage: 38, radius: 54, abilities: ['charge', 'burst', 'summon', 'cross', 'voidzones'], summon: 'mutalisk' },
   },
   {
-    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 18,
+    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 13.5,
     ground: [0x2e4a2c, 0x243e22], doodad: 0x4fd2ff,
     waves: [
       // the Swarm is on Aiur too: lighter zerglings open the zone before the zealots take over
@@ -179,7 +179,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'af', name: 'Ulrezaj', title: 'Archon of Shadows', shape: 'archon', color: 0x5020c0, hp: 34000, speed: 85, damage: 44, radius: 66, abilities: ['burst', 'barrage', 'summon', 'voidzones'], summon: 'zealot', split: ['archon', 3] },
   },
   {
-    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 18,
+    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 13.5,
     ground: [0x3a3e44, 0x30343a], doodad: 0xd04040,
     waves: [
       { from: 0, pool: [['marine', 6], ['zergling', 4]] },
@@ -198,7 +198,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'kf', name: 'Emperor Mengsk', title: 'Dominion Warlord', shape: 'marine', color: 0xc02020, hp: 46000, speed: 95, damage: 48, radius: 56, abilities: ['barrage', 'pods', 'charge', 'cross', 'slam'], summon: 'marine' },
   },
   {
-    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 20,
+    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 13.5,
     ground: [0x1e1c2e, 0x181626], doodad: 0x9a4aff,
     waves: [
       { from: 0, pool: [['hybridling', 4], ['zergling', 8]] },
@@ -217,7 +217,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'uf', name: 'Amon\'s Avatar', title: 'The Dark God', shape: 'hybrid', color: 0xff3060, hp: 70000, speed: 90, damage: 56, radius: 74, abilities: ['burst', 'cross', 'voidzones', 'pods', 'slam'], summon: 'hybridling', split: ['hybrid', 2] },
   },
   {
-    id: 'braxis', name: 'Braxis', desc: 'A frozen UED stronghold. Directorate marines and captured Zerg guard the Psi Disrupter.', tier: 3.9, minutes: 20,
+    id: 'braxis', name: 'Braxis', desc: 'A frozen UED stronghold. Directorate marines and captured Zerg guard the Psi Disrupter.', tier: 3.9, minutes: 13.5,
     ground: [0x5a6a7a, 0x4c5a68], doodad: 0x9ad8ff,
     waves: [
       { from: 0, pool: [['marine', 6], ['zergling', 6]] },
@@ -236,7 +236,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'xf', name: 'Admiral DuGalle', title: 'United Earth Directorate', shape: 'marine', color: 0x3060c0, hp: 90000, speed: 95, damage: 58, radius: 60, abilities: ['barrage', 'pods', 'charge', 'cross', 'voidzones'], summon: 'firebat', split: ['siegetank', 2] },
   },
   {
-    id: 'shakuras', name: 'Shakuras', desc: 'The Dark Templar refuge, overrun by the Swarm and stalked by hybrids in its twin temples.', tier: 4.6, minutes: 22,
+    id: 'shakuras', name: 'Shakuras', desc: 'The Dark Templar refuge, overrun by the Swarm and stalked by hybrids in its twin temples.', tier: 4.6, minutes: 13.5,
     ground: [0x6a5a3a, 0x5c4e32], doodad: 0x4fd2ff,
     waves: [
       { from: 0, pool: [['hybridling', 5], ['zergling', 8], ['zealot', 2]] },

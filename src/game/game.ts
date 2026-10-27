@@ -30,7 +30,10 @@ const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no
 const GRID_HALF = 3600; // half-size of the spatial grid around the player
 const LAIRS = 4;
 const BOSS_SIZE = 2.2; // bosses tower over the swarm, like Azeroth Survivors' raid bosses
-const BERSERK = 120; // seconds before a boss goes berserk (final bosses get longer)
+const BERSERK = 120;
+/** Azeroth Survivors' clock: a boss every 2:15, the sixth (the zone's final boss) at 13:30, and the zone is won at 15:00. */
+export const BOSS_EVERY = 135;
+export const VICTORY_SECS = 900; // seconds before a boss goes berserk (final bosses get longer)
 /** What each race's bosses call their raid mechanics. */
 const MECHANIC_NAMES: Record<'zerg' | 'terran' | 'protoss', Record<BossMechanic, string>> = {
   zerg: { soak: 'Bile Meteor', mark: 'Parasite', nova: 'Psionic Shockwave', safezone: 'Brood Plague' },
@@ -602,7 +605,7 @@ export class Game {
     if (opts.boss) {
       const b = opts.boss;
       // final bosses were long, low-threat fights; they have less health and attack more often instead
-      const bossHp = b.hp * 1.4 * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
+      const bossHp = b.hp * 1.4 * (opts.hpMult ?? 1) * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
       e.maxHp = bossHp;
       e.speed = b.speed;
       e.damage = b.damage * Math.pow(this.zone.tier, 0.6) * this.diff.dmg;
@@ -901,13 +904,11 @@ export class Game {
       this.dropPickup('magnet', e.x, e.y - 30, 0);
       const rar = Math.min(4, rollRarity(this.stats.luck + this.diff.luck + 1) + 1) as Rarity;
       const loot = rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0));
-      if (e.boss.final && !this.endless) {
+      if (e.boss.final && !this.endless && !this.victoryShown) {
         this.removeEnemyAt(i);
-        this.victoryShown = true;
-        sfx('win');
         // hand the final boss's gear over directly so extracting can't leave it on the ground
         this.hooks.gear(loot);
-        this.hooks.victory();
+        this.winZone();
         return;
       }
       this.dropPickup('gear', e.x + 30, e.y, 0, loot);
@@ -1391,7 +1392,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------ boss logic
-  private spawnBoss(def: BossDef, final: boolean) {
+  private spawnBoss(def: BossDef, final: boolean, hpMult = 1) {
     const p = this.player;
     const a = Math.random() * Math.PI * 2;
     const base = ENEMIES[def.summon ?? 'zergling'] ?? ENEMIES.zergling;
@@ -1410,7 +1411,7 @@ export class Game {
       }
       if (far >= 0) this.removeEnemyAt(far);
     }
-    const e = this.spawnEnemy(base, p.x + Math.cos(a) * 750, p.y + Math.sin(a) * 750, { boss: def, final });
+    const e = this.spawnEnemy(base, p.x + Math.cos(a) * 750, p.y + Math.sin(a) * 750, { boss: def, final, hpMult });
     if (!e) return;
     sfx('boss');
     this.shake(10);
@@ -1742,7 +1743,7 @@ export class Game {
     const p = this.player;
     const o = this.objective;
     if (!o) {
-      // between bosses (3, 6, 9... minutes), never while one is up or in endless mode
+      // between bosses, never while one is up or in endless mode
       if (this.time < this.nextObjective || this.endless || this.bosses.length || this.time > this.zone.minutes * 60 - 60) return;
       this.nextObjective = this.time + 150 + Math.random() * 30;
       this.startObjective();
@@ -2156,24 +2157,40 @@ export class Game {
     });
   }
 
+  /** Killing the final boss, or lasting until the bell at 15:00, clears the zone. */
+  private winZone() {
+    this.victoryShown = true;
+    sfx('win');
+    this.hooks.victory();
+  }
+
+  /** When the next boss arrives (game seconds), or null when none is left before the bell. */
+  get nextBossAt(): number | null {
+    if (this.endless) return this.time + this.endlessBossT;
+    return this.nextBoss <= this.zone.bosses.length + 1 ? (this.nextBoss + 1) * BOSS_EVERY : null;
+  }
+
   private direct(dt: number) {
     const m = this.time / 60;
     const z = this.zone;
     const p = this.player;
-    // bosses
+    // bosses: the zone's four, then two of them return together, then the final boss at 13:30
     if (!this.endless) {
-      if (this.nextBoss < z.bosses.length && this.time >= (this.nextBoss + 1) * 180) {
-        this.spawnBoss(z.bosses[this.nextBoss], false);
+      if (this.nextBoss <= z.bosses.length + 1 && this.time >= (this.nextBoss + 1) * BOSS_EVERY) {
+        if (this.nextBoss < z.bosses.length) this.spawnBoss(z.bosses[this.nextBoss], false);
+        else if (this.nextBoss === z.bosses.length) {
+          // a council fight, like a raid's twin bosses
+          const n = z.bosses.length;
+          this.spawnBoss(z.bosses[n - 2], false, 1.6);
+          this.spawnBoss(z.bosses[n - 1], false, 1.1);
+        } else this.spawnBoss(z.final, true);
         this.nextBoss++;
       }
-      if (this.nextBoss === z.bosses.length && this.time >= z.minutes * 60) {
-        this.spawnBoss(z.final, true);
-        this.nextBoss++;
-      }
+      if (!this.victoryShown && this.time >= VICTORY_SECS) this.winZone();
     } else {
       this.endlessBossT -= dt;
       if (this.endlessBossT <= 0) {
-        this.endlessBossT = 120;
+        this.endlessBossT = BOSS_EVERY;
         const list = [...z.bosses, z.final];
         this.spawnBoss(list[this.endlessIdx % list.length], false);
         this.endlessIdx++;
