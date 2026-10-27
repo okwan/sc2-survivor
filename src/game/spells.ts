@@ -4,6 +4,7 @@ import { fx, minionTexture } from '../render/textures';
 import { sfx } from './audio';
 import type { Enemy, SpellInstance } from './entities';
 import type { Game } from './game';
+import { hyp } from './math';
 
 const TAU = Math.PI * 2;
 
@@ -54,7 +55,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       const hits = (mult: number) =>
         g.forEnemiesInRadius(p.x, p.y, reach, (e) => {
           const a = Math.atan2(e.y - p.y, e.x - p.x);
-          const dist = Math.hypot(e.x - p.x, e.y - p.y);
+          const dist = hyp(e.x - p.x, e.y - p.y);
           if (dist < e.radius + 20 || Math.abs(angleDiff(a, dir)) < half) {
             g.hit(e, st.damage * mult, s.slot, { kx: Math.cos(a) * (isBlade ? 140 : 40), ky: Math.sin(a) * (isBlade ? 140 : 40), tags: def.tags });
           }
@@ -275,7 +276,7 @@ export function updateMinions(g: Game, dt: number) {
       }
       const dx = tx - m.x;
       const dy = ty - m.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = hyp(dx, dy) || 1;
       if (d > 6) {
         const v = Math.min(d, speed * dt * (m.target ? 1 : d > 200 ? 1.6 : 0.8));
         m.x += (dx / d) * v;
@@ -287,7 +288,7 @@ export function updateMinions(g: Game, dt: number) {
         m.atk = st?.cooldown ?? 0.5;
       }
       // leash
-      if (Math.hypot(m.x - p.x, m.y - p.y) > 600) {
+      if (hyp(m.x - p.x, m.y - p.y) > 600) {
         m.target = null;
       }
     }

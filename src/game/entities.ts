@@ -18,6 +18,7 @@ export interface BossState {
 
 export interface Enemy {
   uid: number;
+  idx: number; // position in Game.enemies, kept up to date as the array is compacted
   def: EnemyDef;
   x: number;
   y: number;

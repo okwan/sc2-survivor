@@ -1,10 +1,11 @@
-import { Application, BitmapFont, BitmapText, Container, Graphics, Sprite, TilingSprite, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
+import { glyph } from '../render/glyphs';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
 import { bwDoodads, bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
 import { sfx } from './audio';
@@ -12,6 +13,7 @@ import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
 import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
+import { damp, hyp } from './math';
 import type { Input } from './input';
 import { spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
@@ -74,12 +76,16 @@ interface Player {
 }
 
 interface DmgText {
-  t: BitmapText;
+  c: Container;
+  glyphs: Sprite[];
   life: number;
   vy: number;
+  /** Enemy this number belongs to, so rapid hits on one target add up instead of stacking. */
+  uid: number;
+  val: number;
 }
 
-let fontReady = false;
+const MAX_TEXTS = 40;
 
 export class Game {
   app: Application;
@@ -90,17 +96,24 @@ export class Game {
   root = new Container();
   world = new Container();
   ground!: TilingSprite;
+  // Each busy layer is its own render group: pooled sprites flipping `visible` (and culling) then only
+  // rebuild that layer's draw list instead of the whole scene's.
   layers = {
-    ground: new Container(),
-    pickups: new Container(),
+    ground: new Container({ isRenderGroup: true }),
+    pickups: new Container({ isRenderGroup: true }),
     shadows: new Container(),
-    units: new Container(),
+    units: new Container({ isRenderGroup: true }),
     top: new Container(),
-    bwfx: new Container(), // Brood War animated effects (normal blending)
-    fx: new Container(),
-    text: new Container(),
+    bwfx: new Container({ isRenderGroup: true }), // Brood War animated effects (normal blending)
+    fx: new Container({ isRenderGroup: true }),
+    text: new Container({ isRenderGroup: true }),
+    overlay: new Container(), // telegraphs, boss rings, pickup range: pooled sprites instead of Graphics
   };
   gfx = new Graphics();
+  private gfxDirty = false;
+  private ovDisc = new SpritePass(this.layers.overlay, () => fx.disc());
+  private ovRing = new SpritePass(this.layers.overlay, () => fx.ring());
+  private ovLine = new SpritePass(this.layers.overlay, () => Texture.WHITE, 0);
   heroSprite!: Sprite;
   private heroBw: BwSprite | null = null;
   private heroAngle = 0;
@@ -192,16 +205,6 @@ export class Game {
       dashCd: 0, dashT: 0, dashVx: 0, dashVy: 0, stimCd: 12, stimT: 0, feedbackCd: 0, nukeCd: 6, revivesUsed: 0, regenAcc: 0,
     };
 
-    if (!fontReady) {
-      BitmapFont.install({
-        name: 'dmg',
-        style: { fontFamily: 'Arial Black, Arial, sans-serif', fontSize: 32, fontWeight: 'bold', fill: 0xffffff, stroke: { color: 0x000000, width: 6 } },
-        chars: [['0', '9'], '!', '+', '-', 'K', 'M', '.'],
-        resolution: 1,
-      });
-      fontReady = true;
-    }
-
     this.buildScene();
     this.recomputeStats();
     this.player.hp = this.stats.maxHp;
@@ -253,7 +256,7 @@ export class Game {
       const s = new Sprite(b.frames[0]);
       s.anchor.set(0.5);
       s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (Math.hypot(s.x, s.y) < 260) continue;
+      if (hyp(s.x, s.y) < 260) continue;
       this.layers.ground.addChild(s);
       this.props.push(s);
     }
@@ -262,7 +265,7 @@ export class Game {
       const d = dds[Math.floor(Math.random() * dds.length)];
       const x = (Math.random() * 2 - 1) * WORLD;
       const y = (Math.random() * 2 - 1) * WORLD;
-      if (Math.hypot(x, y) < 260) continue;
+      if (hyp(x, y) < 260) continue;
       for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) {
         const s = new Sprite(b.frames[0]);
         s.anchor.set(0.5);
@@ -277,7 +280,7 @@ export class Game {
       const s = new Sprite(propTexture(k, z.doodad, Math.floor(Math.random() * 6)));
       s.anchor.set(0.5);
       s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (Math.hypot(s.x, s.y) < 200) continue;
+      if (hyp(s.x, s.y) < 200) continue;
       s.alpha = k === 'bones' ? 0.6 : 0.9;
       this.layers.ground.addChild(s);
       this.props.push(s);
@@ -449,7 +452,7 @@ export class Game {
       const spr = new Sprite(tex);
       spr.anchor.set(0.5);
       e = {
-        uid: 0, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
+        uid: 0, idx: -1, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
         burnDps: 0, burnTime: 0, burnTick: 0, contactCd: 0, shotTimer: 0, elite: false, boss: null, lair: null, asleep: false,
         hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0, bw: null, bwScale: 1,
       };
@@ -505,6 +508,7 @@ export class Game {
     spr.tint = opts.elite ? 0xffe9a0 : 0xffffff;
     spr.position.set(x, y);
     if (!spr.parent) this.layers.units.addChild(spr);
+    e.idx = this.enemyCount;
     this.enemies[this.enemyCount++] = e;
     return e;
   }
@@ -514,17 +518,26 @@ export class Game {
     e.sprite.visible = false;
     if (e.boss) this.bosses.splice(this.bosses.indexOf(e), 1);
     this.enemyCount--;
-    this.enemies[i] = this.enemies[this.enemyCount];
+    const last = this.enemies[this.enemyCount];
+    this.enemies[i] = last;
+    last.idx = i;
     this.enemies[this.enemyCount] = e;
+    e.idx = -1;
     e.hp = 0;
     this.enemyPool.push(e);
   }
 
+  private nbuf = new Int32Array(4096);
+
   nearestEnemy(x: number, y: number, maxDist: number, exclude?: Set<number>): Enemy | null {
     let best: Enemy | null = null;
     let bd = maxDist * maxDist;
-    for (let i = 0; i < this.enemyCount; i++) {
-      const e = this.enemies[i];
+    // short searches (chain hops, broodlings, turrets) go through the spatial grid instead of every enemy
+    const useGrid = maxDist <= 800;
+    const n = useGrid ? this.grid.query(x, y, maxDist + 40, this.nbuf) : this.enemyCount;
+    for (let k = 0; k < n; k++) {
+      const e = this.enemies[useGrid ? this.nbuf[k] : k];
+      if (!e) continue;
       if (e.asleep || e.hp <= 0) continue;
       if (exclude && exclude.has(e.uid)) continue;
       const dx = e.x - x;
@@ -599,7 +612,12 @@ export class Game {
       if (dx * dx + dy * dy < r2) cands.push(e);
     }
     const out: Enemy[] = [];
-    while (out.length < n && cands.length) out.push(cands.splice(Math.floor(Math.random() * cands.length), 1)[0]);
+    while (out.length < n && cands.length) {
+      const k = Math.floor(Math.random() * cands.length);
+      out.push(cands[k]);
+      cands[k] = cands[cands.length - 1];
+      cands.pop();
+    }
     return out;
   }
 
@@ -614,7 +632,7 @@ export class Game {
     const out: Enemy[] = [];
     for (const s of scored) {
       if (out.length >= n) break;
-      if (out.some((o) => Math.hypot(o.x - s.e.x, o.y - s.e.y) < 80)) continue;
+      if (out.some((o) => hyp(o.x - s.e.x, o.y - s.e.y) < 80)) continue;
       out.push(s.e);
     }
     return out;
@@ -674,7 +692,7 @@ export class Game {
         if (o !== e) this.hit(o, base * 0.4, slot, { quiet: true, noCrit: true });
       });
     }
-    if (save.settings.damageNumbers && (!opts.quiet || crit)) this.damageText(e.x, e.y - e.radius, dmg, crit);
+    if (save.settings.damageNumbers && (!opts.quiet || crit)) this.damageText(e.x, e.y - e.radius, dmg, crit, e.uid);
     if (e.hp <= 0) {
       this.killEnemy(e, slot);
     } else if (this.flags.has('darkTemplar') && slot === this.spells.find((s) => s.def.id === 'blades')?.slot && !e.boss && e.hp < e.maxHp * 0.15) {
@@ -684,8 +702,8 @@ export class Game {
   }
 
   private killEnemy(e: Enemy, slot: number) {
-    const i = this.enemies.indexOf(e);
-    if (i < 0 || i >= this.enemyCount) return;
+    const i = e.idx;
+    if (i < 0 || i >= this.enemyCount || this.enemies[i] !== e) return;
     this.player.kills++;
     this.dropGem(e.x, e.y, e.xp);
     if (Math.random() < (e.elite ? 1 : 0.035)) this.dropPickup('mineral', e.x + 8, e.y, Math.ceil((e.elite ? 25 : 1 + Math.random() * 3) * this.stats.minerals));
@@ -752,7 +770,7 @@ export class Game {
   private banelingBlast(e: Enemy) {
     const p = this.player;
     this.addFx(fx.soft(), e.x, e.y, 0x9cff3c, 0.4, 1.6, 0.35, 0.9);
-    if (Math.hypot(p.x - e.x, p.y - e.y) < 60) this.damagePlayer(e.damage, e.def.name);
+    if (hyp(p.x - e.x, p.y - e.y) < 60) this.damagePlayer(e.damage, e.def.name);
   }
 
   // ------------------------------------------------------------ player
@@ -863,7 +881,7 @@ export class Game {
       dx = Math.cos(p.facing);
       dy = Math.sin(p.facing);
     }
-    const l = Math.hypot(dx, dy) || 1;
+    const l = hyp(dx, dy) || 1;
     const speed = 1300;
     p.dashVx = (dx / l) * speed;
     p.dashVy = (dy / l) * speed;
@@ -1023,32 +1041,71 @@ export class Game {
     this.pickups.push({ x, y, kind, value, sprite: spr, pulled: false, speed: 0, life: kind === 'mineral' ? 60 : 9999, data });
   }
 
-  damageText(x: number, y: number, v: number, crit: boolean) {
-    const str = v >= 10000 ? `${(v / 1000).toFixed(0)}K` : `${Math.round(v)}`;
-    this.floatText(x + (Math.random() - 0.5) * 16, y, crit ? str + '!' : str, crit ? 0xffd040 : 0xffffff, crit ? 0.75 : 0.5);
-  }
-
-  floatText(x: number, y: number, text: string, color: number, scale = 0.6) {
-    let d: DmgText | undefined;
-    if (this.dmgTexts.length >= 90) {
-      d = this.dmgTexts.shift()!;
-    } else {
-      const free = this.freeTexts.pop();
-      d = free ?? { t: new BitmapText({ text: '', style: { fontFamily: 'dmg', fontSize: 32 } }), life: 0, vy: 0 };
-      if (!d.t.parent) {
-        d.t.anchor.set(0.5);
-        this.layers.text.addChild(d.t);
+  damageText(x: number, y: number, v: number, crit: boolean, uid = 0) {
+    if (uid && !crit) {
+      for (const d of this.dmgTexts) {
+        if (d.uid === uid && d.life > 0.35) {
+          d.val += v;
+          this.setText(d, fmtDmg(d.val));
+          d.life = 0.7;
+          return;
+        }
       }
     }
-    d.t.text = text;
-    d.t.tint = color;
-    d.t.visible = true;
-    d.t.position.set(x, y);
-    d.t.scale.set(scale);
-    d.t.alpha = 1;
+    const str = fmtDmg(v);
+    const d = this.floatText(x + (Math.random() - 0.5) * 16, y, crit ? str + '!' : str, crit ? 0xffd040 : 0xffffff, crit ? 0.75 : 0.5);
+    d.uid = crit ? 0 : uid;
+    d.val = v;
+  }
+
+  floatText(x: number, y: number, text: string, color: number, scale = 0.6): DmgText {
+    let d: DmgText | undefined;
+    if (this.dmgTexts.length >= MAX_TEXTS) {
+      d = this.dmgTexts.shift()!;
+    } else {
+      d = this.freeTexts.pop();
+      if (!d) {
+        d = { c: new Container(), glyphs: [], life: 0, vy: 0, uid: 0, val: 0 };
+        this.layers.text.addChild(d.c);
+      }
+    }
+    this.setText(d, text);
+    d.c.tint = color;
+    d.c.position.set(x, y);
+    d.c.scale.set(scale);
+    d.c.alpha = 1;
     d.life = 0.7;
     d.vy = -60;
+    d.uid = 0;
+    d.val = 0;
     this.dmgTexts.push(d);
+    return d;
+  }
+
+  /** Lays out glyph sprites. Unused glyphs are hidden with alpha, never `visible`, which would rebuild the scene. */
+  private setText(d: DmgText, text: string) {
+    let x = 0;
+    let n = 0;
+    for (let i = 0; i < text.length; i++) {
+      const g = glyph(text[i]);
+      if (!g) {
+        x += 12;
+        continue;
+      }
+      let s = d.glyphs[n];
+      if (!s) {
+        s = new Sprite(g.tex);
+        s.anchor.set(0, 0.5);
+        d.c.addChild(s);
+        d.glyphs.push(s);
+      } else s.texture = g.tex;
+      s.alpha = 1;
+      s.x = x - 4;
+      x += g.w;
+      n++;
+    }
+    for (let i = n; i < d.glyphs.length; i++) d.glyphs[i].alpha = 0;
+    d.c.pivot.x = x / 2;
   }
 
   shake(v: number) {
@@ -1086,7 +1143,7 @@ export class Game {
     const p = this.player;
     const dx = p.x - e.x;
     const dy = p.y - e.y;
-    const d = Math.hypot(dx, dy) || 1;
+    const d = hyp(dx, dy) || 1;
     if (!b.enraged && e.hp < e.maxHp * 0.3) {
       b.enraged = true;
       e.sprite.tint = 0xff7070;
@@ -1151,7 +1208,7 @@ export class Game {
             this.addFx(fx.soft(), tx, ty, 0xff6030, 0.5, (r * 2.2) / 128, 0.4, 0.9);
             this.shake(8);
             sfx('explode');
-            if (Math.hypot(this.player.x - tx, this.player.y - ty) < r) this.damagePlayer(e.damage * 1.2, b.def.name);
+            if (hyp(this.player.x - tx, this.player.y - ty) < r) this.damagePlayer(e.damage * 1.2, b.def.name);
           },
         });
         break;
@@ -1182,7 +1239,7 @@ export class Game {
   update(dtMs: number) {
     this.frameMs = this.frameMs * 0.95 + dtMs * 0.05;
     if (this.paused || this.over) {
-      this.render();
+      this.render(Math.min(dtMs / 1000, 1 / 20));
       return;
     }
     const dt = Math.min(dtMs / 1000, 1 / 20);
@@ -1333,8 +1390,7 @@ export class Game {
       this.hooks.levelUp();
     }
 
-    // ---- final boss / endless timeline
-    this.render();
+    this.render(dt);
   }
 
   private direct(dt: number) {
@@ -1417,7 +1473,7 @@ export class Game {
     const p = this.player;
     const hw = this.app.screen.width / 2 / this.zoom;
     const hh = this.app.screen.height / 2 / this.zoom;
-    const r = Math.hypot(hw, hh) + 60;
+    const r = hyp(hw, hh) + 60;
     for (let tries = 0; tries < 6; tries++) {
       const a = Math.random() * Math.PI * 2;
       const x = p.x + Math.cos(a) * r;
@@ -1432,15 +1488,16 @@ export class Game {
     const p = this.player;
     const hw = this.app.screen.width / 2 / this.zoom + 120;
     const hh = this.app.screen.height / 2 / this.zoom + 120;
-    const farR = Math.hypot(hw, hh) * 1.7;
+    const farR = hyp(hw, hh) * 1.7;
     const damp = Math.exp(-7 * dt);
     this.grid.clear();
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
       if (e.flash > 0) {
         e.flash -= dt;
-        if (e.flash <= 0) e.sprite.tint = e.boss?.enraged ? 0xff7070 : e.elite ? 0xffe9a0 : 0xffffff;
-        else e.sprite.tint = 0xff6666;
+        // the tint setter does colour work and allocates, so only write it when it changes
+        const tint = e.flash <= 0 ? (e.boss?.enraged ? 0xff7070 : e.elite ? 0xffe9a0 : 0xffffff) : 0xff6666;
+        if (e.sprite.tint !== tint) e.sprite.tint = tint;
       }
       if (e.burnTime > 0) {
         e.burnTime -= dt;
@@ -1461,22 +1518,22 @@ export class Game {
         const dy = p.y - e.y;
         if (dx * dx + dy * dy < 380 * 380) this.wake(e);
         this.grid.insert(i, e.x, e.y);
-        e.sprite.visible = Math.abs(e.x - p.x) < hw && Math.abs(e.y - p.y) < hh;
+        e.sprite.visible = onScreen(e.sprite.visible, e.x - p.x, e.y - p.y, hw, hh);
         e.sprite.alpha = 0.75 + Math.sin(this.time * 2) * 0.1;
         continue;
       }
       e.sprite.alpha = 1;
       const dx = p.x - e.x;
       const dy = p.y - e.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = hyp(dx, dy) || 1;
       if (e.boss) {
         this.updateBoss(e, e.boss, dt);
       } else {
         // guardians return to their lair and fall asleep when the player leaves
-        if (e.lair && Math.hypot(p.x - e.lair.x, p.y - e.lair.y) > 750) {
+        if (e.lair && hyp(p.x - e.lair.x, p.y - e.lair.y) > 750) {
           const lx = e.lair.x - e.x;
           const ly = e.lair.y - e.y;
-          const ld = Math.hypot(lx, ly);
+          const ld = hyp(lx, ly);
           if (ld < 20) {
             e.asleep = true;
             e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.25);
@@ -1565,6 +1622,7 @@ export class Game {
 
     // separation + sprite sync
     const qb = this.qbuf;
+    const sepK = Math.min(0.7, 0.35 * dt * 60); // same crowd stiffness at any frame rate
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
       if (!e.boss && !e.asleep) {
@@ -1581,7 +1639,7 @@ export class Game {
           const d2 = ox * ox + oy * oy;
           if (d2 < rr * rr && d2 > 0.01) {
             const dd = Math.sqrt(d2);
-            const push = ((rr - dd) / dd) * 0.35;
+            const push = ((rr - dd) / dd) * sepK;
             const w = o.mass / (e.mass + o.mass);
             e.x += ox * push * w * 2;
             e.y += oy * push * w * 2;
@@ -1589,8 +1647,8 @@ export class Game {
         }
       }
       const spr = e.sprite;
-      const vis = Math.abs(e.x - p.x) < hw && Math.abs(e.y - p.y) < hh;
-      spr.visible = vis;
+      const vis = onScreen(spr.visible, e.x - p.x, e.y - p.y, hw, hh);
+      if (spr.visible !== vis) spr.visible = vis;
       if (vis) {
         spr.position.set(e.x, e.y);
         const a = Math.atan2(p.y - e.y, p.x - e.x);
@@ -1620,7 +1678,7 @@ export class Game {
           if (dx * dx + dy * dy > rr * rr) continue;
           if (pr.hits.includes(e.uid)) continue;
           pr.hits.push(e.uid);
-          const sp = Math.hypot(pr.vx, pr.vy) || 1;
+          const sp = hyp(pr.vx, pr.vy) || 1;
           this.hit(e, pr.damage, pr.slot, { kx: (pr.vx / sp) * 60, ky: (pr.vy / sp) * 60, tags: pr.tags, splash: pr.splash });
           if (!this.addAnim(this.race.id === 'terran' ? 'fx:tspark' : this.race.id === 'zerg' ? 'fx:zspark' : 'fx:pspark', pr.x, pr.y, 1, 0.25)) this.addFx(fx.spark(), pr.x, pr.y, pr.sprite.tint as number, 0.6, 1.4, 0.12, 0.9);
           if (pr.pierce-- <= 0) {
@@ -1698,7 +1756,7 @@ export class Game {
         for (let k = 0; k < n; k++) {
           const e = this.enemies[qb[k]];
           if (!e || e.asleep) continue;
-          if (Math.hypot(e.x - m.x, e.y - m.y) < e.radius + 22) {
+          if (hyp(e.x - m.x, e.y - m.y) < e.radius + 22) {
             boom = true;
             break;
           }
@@ -1798,7 +1856,7 @@ export class Game {
       const ty = target ? target.y : p.y - 30;
       const dx = tx - pb.x;
       const dy = ty - pb.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = hyp(dx, dy) || 1;
       const v = Math.min(d, 520 * dt);
       pb.x += (dx / d) * v;
       pb.y += (dy / d) * v;
@@ -1812,7 +1870,7 @@ export class Game {
       k.life -= dt;
       const dx = p.x - k.x;
       const dy = p.y - k.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = hyp(dx, dy) || 1;
       if (!k.pulled && d < (k.kind === 'mineral' ? this.stats.pickupRange : 40)) k.pulled = true;
       if (k.kind === 'magnet') k.sprite.rotation += dt * 2;
       if (k.pulled) {
@@ -1882,15 +1940,17 @@ export class Game {
   }
 
   // ------------------------------------------------------------ render
-  render() {
+  /** dt: real seconds since the last frame, so smoothing feels the same at 30, 60 or 144 Hz. */
+  render(dt: number) {
     const p = this.player;
     const W = this.app.screen.width;
     const H = this.app.screen.height;
-    this.shakeAmt *= 0.85;
+    this.shakeAmt *= 1 - damp(9.75, dt);
     const sx = (Math.random() - 0.5) * this.shakeAmt;
     const sy = (Math.random() - 0.5) * this.shakeAmt;
-    this.camX += (p.x - this.camX) * 0.25;
-    this.camY += (p.y - this.camY) * 0.25;
+    const ck = damp(17, dt);
+    this.camX += (p.x - this.camX) * ck;
+    this.camY += (p.y - this.camY) * ck;
     if (Math.abs(p.x - this.camX) > 300 || this.time < 0.1) {
       this.camX = p.x;
       this.camY = p.y;
@@ -1898,8 +1958,8 @@ export class Game {
     const z = this.zoom;
     this.world.scale.set(z);
     this.world.position.set(W / 2 - this.camX * z + sx, H / 2 - this.camY * z + sy);
-    this.ground.width = W;
-    this.ground.height = H;
+    if (this.ground.width !== W) this.ground.width = W;
+    if (this.ground.height !== H) this.ground.height = H;
     this.ground.tileScale.set(z);
     this.ground.tilePosition.set(-this.camX * z + W / 2 + sx, -this.camY * z + H / 2 + sy);
 
@@ -1907,7 +1967,7 @@ export class Game {
     const hs = this.heroSprite;
     hs.position.set(p.x, p.y);
     const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0;
-    this.heroAngle = angleLerpTo(this.heroAngle, p.facing, 0.3);
+    this.heroAngle = angleLerpTo(this.heroAngle, p.facing, damp(21, dt));
     const bob = moving && !this.paused ? 1 + Math.sin(this.time * 18) * 0.04 : 1;
     if (this.heroBw) {
       orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1);
@@ -1937,10 +1997,12 @@ export class Game {
     // props culling
     const hw = W / 2 / z + 80;
     const hh = H / 2 / z + 80;
-    for (const s of this.props) s.visible = Math.abs(s.x - this.camX) < hw && Math.abs(s.y - this.camY) < hh;
+    for (const s of this.props) {
+      const v = onScreen(s.visible, s.x - this.camX, s.y - this.camY, hw, hh);
+      if (s.visible !== v) s.visible = v;
+    }
 
     if (this.paused || this.over) return;
-    const dt = Math.min(0.05, this.frameMs / 1000);
 
     // fx
     for (let i = this.fxs.length - 1; i >= 0; i--) {
@@ -1968,30 +2030,46 @@ export class Game {
     for (let i = this.dmgTexts.length - 1; i >= 0; i--) {
       const d = this.dmgTexts[i];
       d.life -= dt;
-      d.t.y += d.vy * dt;
-      d.vy *= 0.92;
-      d.t.alpha = Math.min(1, d.life * 3);
+      d.c.y += d.vy * dt;
+      d.vy *= 1 - damp(5, dt);
+      d.c.alpha = Math.min(1, d.life * 3);
       if (d.life <= 0) {
-        d.t.visible = false;
+        d.c.alpha = 0;
         this.dmgTexts.splice(i, 1);
         free.push(d);
       }
     }
 
-    // vector overlay: telegraphs, chains, boss rings, lair hint
-    const g = this.gfx;
-    g.clear();
+    // overlay: telegraphs, boss rings and the pickup range are sprites, so nothing is re-tessellated per frame
+    const disc = this.ovDisc.begin();
+    const ring = this.ovRing.begin();
+    const line = this.ovLine.begin();
     for (const t of this.telegraphs) {
       const k = t.t / t.max;
       const col = t.friendly ? 0xffd040 : 0xff3030;
       if (t.kind === 'circle') {
-        g.circle(t.x, t.y, t.r).fill({ color: col, alpha: 0.12 }).stroke({ width: 3, color: col, alpha: 0.7 });
-        g.circle(t.x, t.y, t.r * k).fill({ color: col, alpha: 0.18 });
+        disc.add(t.x, t.y, t.r / 64, t.r / 64, 0, col, 0.3);
+        ring.add(t.x, t.y, t.r / 112, t.r / 112, 0, col, 0.8);
+        disc.add(t.x, t.y, (t.r * k) / 64, (t.r * k) / 64, 0, col, 0.35);
       } else {
-        const ex = t.x + t.dx * t.len;
-        const ey = t.y + t.dy * t.len;
-        g.moveTo(t.x, t.y).lineTo(ex, ey).stroke({ width: t.r * 2, color: col, alpha: 0.12 + k * 0.15 });
+        line.add(t.x, t.y, t.len, t.r * 2, Math.atan2(t.dy, t.dx), col, 0.12 + k * 0.15);
       }
+    }
+    for (const b of this.bosses) {
+      const r = (b.radius + 10) / 112;
+      ring.add(b.x, b.y, r, r, 0, b.boss?.enraged ? 0xff3030 : 0xffd040, 0.5 + Math.sin(this.time * 6) * 0.2);
+    }
+    const pr = this.stats.pickupRange / 112;
+    ring.add(p.x, p.y, pr, pr, 0, 0xffffff, 0.06);
+    disc.end();
+    ring.end();
+    line.end();
+
+    // chain lightning still needs lines; only touch the Graphics while one is showing
+    const g = this.gfx;
+    if (this.chains.length || this.gfxDirty) {
+      g.clear();
+      this.gfxDirty = this.chains.length > 0;
     }
     for (const c of this.chains) {
       const a = Math.min(1, c.life * 8);
@@ -2009,11 +2087,6 @@ export class Game {
         g.stroke({ width: pass ? 2 : 7, color: pass ? 0xffffff : c.color, alpha: pass ? a : a * 0.5 });
       }
     }
-    for (const b of this.bosses) {
-      g.circle(b.x, b.y, b.radius + 10).stroke({ width: 3, color: b.boss?.enraged ? 0xff3030 : 0xffd040, alpha: 0.5 + Math.sin(this.time * 6) * 0.2 });
-    }
-    // pickup range hint
-    g.circle(p.x, p.y, this.stats.pickupRange).stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
   }
 
   /** Things worth walking to, for the HUD's off-screen arrows: bosses, nearby lairs and caches. */
@@ -2045,6 +2118,48 @@ export class Game {
     this.root.destroy({ children: true });
     this.input.joystickEl.style.display = 'none';
   }
+}
+
+/**
+ * Immediate-mode sprites for one texture: call add() for each shape this frame, then end().
+ * Spare sprites are hidden with alpha 0 rather than `visible`, so the scene structure never changes.
+ */
+class SpritePass {
+  private sprites: Sprite[] = [];
+  private n = 0;
+  constructor(private layer: Container, private tex: () => Texture, private anchorX = 0.5) {}
+  begin(): this {
+    this.n = 0;
+    return this;
+  }
+  add(x: number, y: number, sx: number, sy: number, rot: number, tint: number, alpha: number) {
+    let s = this.sprites[this.n];
+    if (!s) {
+      s = new Sprite(this.tex());
+      s.anchor.set(this.anchorX, 0.5);
+      this.layer.addChild(s);
+      this.sprites.push(s);
+    }
+    this.n++;
+    s.position.set(x, y);
+    s.scale.set(sx, sy);
+    s.rotation = rot;
+    if (s.tint !== tint) s.tint = tint;
+    s.alpha = alpha;
+  }
+  end() {
+    for (let i = this.n; i < this.sprites.length; i++) this.sprites[i].alpha = 0;
+  }
+}
+
+/** Culling with a margin before hiding, so sprites near the screen edge don't flip every frame (each flip rebuilds the scene). */
+function onScreen(was: boolean, dx: number, dy: number, hw: number, hh: number): boolean {
+  const m = was ? 120 : 0;
+  return Math.abs(dx) < hw + m && Math.abs(dy) < hh + m;
+}
+
+function fmtDmg(v: number): string {
+  return v >= 10000 ? `${(v / 1000).toFixed(0)}K` : `${Math.round(v)}`;
 }
 
 function easeOut(k: number) {
