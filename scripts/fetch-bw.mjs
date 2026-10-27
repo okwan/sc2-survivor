@@ -348,6 +348,26 @@ function buildAnims(read, grps) {
   return out;
 }
 
+// Prints the command icon of every upgrade and tech with its in-game name (upgrades.dat /
+// techdata.dat + stat_txt.tbl), so src/bw/ui-files.ts can pick icons by what they are.
+function logIcons(read) {
+  const tbl = read('rez\\stat_txt.tbl');
+  const up = read('arr\\upgrades.dat');
+  const tech = read('arr\\techdata.dat');
+  if (!tbl) return;
+  const str = (i) => {
+    if (!i || i > u16(tbl, 0)) return '?';
+    const o = u16(tbl, i * 2);
+    let e = o;
+    while (e < tbl.length && tbl[e]) e++;
+    return Buffer.from(tbl.subarray(o, e)).toString('latin1').replace(/[\x00-\x1f]/g, '').replace(/^.(?=[A-Z][a-z])|<\d+>/g, '').trim();
+  };
+  const rows = [];
+  if (up) for (let i = 0; i < 61; i++) rows.push(`up ${str(u16(up, 976 + i * 2))}=${u16(up, 854 + i * 2)}`);
+  if (tech) for (let i = 0; i < 44; i++) rows.push(`tech ${str(u16(tech, 616 + i * 2))}=${u16(tech, 528 + i * 2)}`);
+  console.log('fetch-bw: icons ' + rows.join(' | '));
+}
+
 async function main() {
   const src = await getSourceDir();
   if (!src) return console.warn('fetch-bw: no source available, shipping placeholder art only');
@@ -402,6 +422,11 @@ async function main() {
     console.log('fetch-bw: animations ' + Object.entries(anims).map(([g, a]) => `${g} ${Object.entries(a).map(([n, s]) => `${n}[${s.map((f) => f.join('x')).join(' ')}]`).join(' ')}`).join(' | '));
   } catch (e) {
     console.warn(`fetch-bw: animations failed: ${e.stack || e}`);
+  }
+  try {
+    logIcons(readAny);
+  } catch (e) {
+    console.warn(`fetch-bw: icons failed: ${e.message}`);
   }
   let maps = {};
   try {
