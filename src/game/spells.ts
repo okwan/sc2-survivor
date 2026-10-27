@@ -4,6 +4,7 @@ import { fx, minionTexture } from '../render/textures';
 import { sfx } from './audio';
 import type { Enemy, SpellInstance } from './entities';
 import type { Game } from './game';
+import { hyp } from './math';
 
 const TAU = Math.PI * 2;
 
@@ -45,16 +46,18 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
     }
     case 'cone': {
       const reach = st.area;
-      const t = g.nearestEnemy(p.x, p.y, reach + 40);
+      // melee swings at a boss in reach first, so it isn't screened by its adds
+      const t = g.bosses.find((b) => b.hp > 0 && hyp(b.x - p.x, b.y - p.y) < reach + b.radius) ?? g.nearestEnemy(p.x, p.y, reach + 40);
       if (!t) return false;
       const isBlade = def.id === 'blades';
-      const half = isBlade ? 1.05 : 0.6;
+      const ring = s.evo?.effect === 'ring';
+      const half = ring ? Math.PI : isBlade ? 1.05 : 0.6;
       const dir = Math.atan2(t.y - p.y, t.x - p.x);
       p.facing = dir;
       const hits = (mult: number) =>
         g.forEnemiesInRadius(p.x, p.y, reach, (e) => {
           const a = Math.atan2(e.y - p.y, e.x - p.x);
-          const dist = Math.hypot(e.x - p.x, e.y - p.y);
+          const dist = hyp(e.x - p.x, e.y - p.y);
           if (dist < e.radius + 20 || Math.abs(angleDiff(a, dir)) < half) {
             g.hit(e, st.damage * mult, s.slot, { kx: Math.cos(a) * (isBlade ? 140 : 40), ky: Math.sin(a) * (isBlade ? 140 : 40), tags: def.tags });
           }
@@ -63,7 +66,12 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       if (isBlade && g.flags.has('darkTemplar')) hits(1);
       const tex = isBlade ? fx.arc() : fx.wedge();
       const scale = isBlade ? (reach * 1.15) / 210 : reach / 256;
-      g.addFx(tex, p.x, p.y, def.color, scale * 0.85, scale, isBlade ? 0.18 : 0.28, 0.9, dir, isBlade ? 0.5 : 0, isBlade ? 0 : 0.5);
+      // evolved cones fire in all directions
+      const arms = ring ? (isBlade ? 3 : 5) : 1;
+      for (let k = 0; k < arms; k++) {
+        const d2 = dir + (k / arms) * TAU;
+        g.addFx(tex, p.x, p.y, def.color, scale * 0.85, scale, isBlade ? 0.18 : 0.28, 0.9, d2, isBlade ? 0.5 : 0, isBlade ? 0 : 0.5);
+      }
       if (!isBlade) for (let i = 0; i < 4; i++) {
         const a = dir + (Math.random() - 0.5) * 1.0;
         const d = Math.random() * reach * 0.8;
@@ -82,9 +90,11 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       return any || true;
     }
     case 'mine': {
+      // spread around the hero rather than all on the path behind them
+      const a0 = Math.random() * TAU;
       for (let i = 0; i < st.count; i++) {
-        const a = Math.random() * TAU;
-        const d = 30 + Math.random() * 70;
+        const a = a0 + (i / st.count) * TAU + (Math.random() - 0.5) * 0.6;
+        const d = 60 + Math.random() * 140;
         g.addMine(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, st.damage, st.area, st.duration, s.slot);
       }
       return true;
@@ -148,6 +158,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       g.forEnemiesInRadius(p.x, p.y, st.area, (e) => {
         const a = Math.atan2(e.y - p.y, e.x - p.x);
         g.hit(e, st.damage, s.slot, { kx: Math.cos(a) * 420, ky: Math.sin(a) * 420, tags: def.tags });
+        e.slow = Math.max(e.slow, 1.2); // a short stun: slow is capped at 70% and wears off over ~0.6 s
       });
       g.addFx(fx.ring(), p.x, p.y, def.color, 0.1, (st.area * 2) / 224, 0.35, 1);
       g.addFx(fx.soft(), p.x, p.y, def.color, 0.5, (st.area * 2) / 128, 0.3, 0.5);
@@ -275,7 +286,7 @@ export function updateMinions(g: Game, dt: number) {
       }
       const dx = tx - m.x;
       const dy = ty - m.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = hyp(dx, dy) || 1;
       if (d > 6) {
         const v = Math.min(d, speed * dt * (m.target ? 1 : d > 200 ? 1.6 : 0.8));
         m.x += (dx / d) * v;
@@ -287,7 +298,7 @@ export function updateMinions(g: Game, dt: number) {
         m.atk = st?.cooldown ?? 0.5;
       }
       // leash
-      if (Math.hypot(m.x - p.x, m.y - p.y) > 600) {
+      if (hyp(m.x - p.x, m.y - p.y) > 600) {
         m.target = null;
       }
     }

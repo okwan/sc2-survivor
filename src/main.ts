@@ -10,7 +10,7 @@ import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { applyBwChrome } from './bw/ui';
 import { Hud } from './ui/hud';
-import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
+import { showCacheShop, showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
 
 async function boot() {
@@ -23,6 +23,7 @@ async function boot() {
     autoDensity: true,
     powerPreference: 'high-performance',
     preference: 'webgl',
+    roundPixels: true, // Brood War pixel art shimmers when sprites land between pixels
   });
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
@@ -122,6 +123,7 @@ async function boot() {
           setTimeout(() => showResults(shell, r, rw), r.won ? 300 : 900);
         },
         toast: (msg, color) => hud?.toast(msg, color),
+        cacheShop: (offers, gearCost, buy) => openDialog((done) => showCacheShop(shell, g, offers, gearCost, buy, done)),
       });
       game = g;
       app.stage.addChild(g.root);
@@ -150,10 +152,23 @@ async function boot() {
   document.addEventListener('visibilitychange', () => document.hidden && pause());
   window.addEventListener('pointerdown', unlockAudio, { once: true });
 
+  // On a slow GPU, step the render resolution down (2 -> 1.5 -> 1) rather than drop frames for the whole run.
+  let slowMs = 0;
+  let avgMs = 16;
   app.ticker.add((t) => {
     if (game) {
       game.update(t.deltaMS);
       hud?.update();
+      if (!game.paused && !game.over && t.deltaMS < 100) {
+        avgMs = avgMs * 0.95 + t.deltaMS * 0.05;
+        slowMs = avgMs > 20 ? slowMs + t.deltaMS : 0;
+        const res = app.renderer.resolution;
+        if (slowMs > 4000 && res > 1) {
+          slowMs = 0;
+          avgMs = 16;
+          app.renderer.resize(app.screen.width, app.screen.height, Math.max(1, res - 0.5));
+        }
+      }
     }
   });
 

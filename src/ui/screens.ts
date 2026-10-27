@@ -1,6 +1,8 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
+import { DIFFICULTIES } from '../data/difficulty';
+import { MAX_MUTATORS, MUTATORS } from '../data/mutators';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -9,7 +11,7 @@ import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
 import { setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
-import type { Game, RunResult } from '../game/game';
+import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
 import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
@@ -68,6 +70,8 @@ export function showMenu(shell: Shell) {
     <div class="races"></div>
     <div class="section-title">Choose your battlefield</div>
     <div class="zones"></div>
+    <div class="diffs"></div>
+    <div class="mutators"></div>
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
@@ -92,7 +96,7 @@ export function showMenu(shell: Shell) {
     b.className = 'race-card' + (r === race ? ' sel' : '');
     b.style.setProperty('--race', hex(d.color === 0x8a3fb0 ? 0xc06ae0 : d.color === 0x3f7fd6 ? 0x5ca0ff : d.color));
     const pts = pointsEarned(r) - pointsSpent(r);
-    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p>`;
+    b.innerHTML = `<div class="pts">${pts > 0 ? `<b>${pts}</b> talent pts` : ''}</div><h2>${d.name}</h2><div class="hero">${d.hero}</div><p>${d.desc}</p><p class="racial">${d.racial}</p><p class="racial">${d.active}</p>`;
     const cv = shell.heroPreview(r);
     if (cv) b.querySelector('h2')!.before(cv);
     b.onclick = () => {
@@ -100,6 +104,7 @@ export function showMenu(shell: Shell) {
       const unlocked = save.races[r].zonesCleared;
       const zi = ZONES.findIndex((z) => z.id === save.lastZone);
       if (zi > unlocked) save.lastZone = ZONES[0].id;
+      if (ZONES.findIndex((z) => z.id === save.lastZone) >= unlocked) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
@@ -118,12 +123,58 @@ export function showMenu(shell: Shell) {
     b.onclick = () => {
       if (locked) return;
       save.lastZone = z.id;
+      if (!cleared) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
     };
     zonesEl.append(b);
   });
+
+  // difficulty: Hard and Brutal open on zones this race has already cleared
+  const diffsEl = inner.querySelector('.diffs')!;
+  const zoneCleared = ZONES.findIndex((z) => z.id === save.lastZone) < rs.zonesCleared;
+  if (!zoneCleared) {
+    save.difficulty = 0;
+    save.mutators = [];
+  }
+  for (const d of DIFFICULTIES) {
+    const b = document.createElement('button');
+    const locked = d.id > 0 && !zoneCleared;
+    b.className = 'diff' + (d.id === save.difficulty ? ' sel' : '') + (locked ? ' locked' : '');
+    b.style.setProperty('--dc', d.color);
+    b.title = locked ? 'Clear this zone to unlock' : d.desc;
+    b.innerHTML = `<b>${locked ? '🔒 ' : ''}${d.name}</b><span>${d.id === 0 ? 'Standard' : `x${d.rewards} rewards`}</span>`;
+    b.onclick = () => {
+      if (locked) return;
+      save.difficulty = d.id;
+      persist();
+      sfx('select');
+      showMenu(shell);
+    };
+    diffsEl.append(b);
+  }
+  // mutators, SC2 co-op style: up to three on a cleared zone, each adding rewards
+  const mutEl = inner.querySelector('.mutators') as HTMLElement;
+  if (zoneCleared) {
+    mutEl.innerHTML = `<div class="mut-title">Mutators <span>${save.mutators.length}/${MAX_MUTATORS} · bonus rewards</span></div>`;
+    for (const m of MUTATORS) {
+      const on = save.mutators.includes(m.id);
+      const b = document.createElement('button');
+      b.className = 'mut' + (on ? ' sel' : '');
+      b.title = m.desc;
+      b.innerHTML = `${m.icon} ${m.name} <span>+${Math.round(m.bonus * 100)}%</span>`;
+      b.onclick = () => {
+        if (on) save.mutators = save.mutators.filter((x) => x !== m.id);
+        else if (save.mutators.length < MAX_MUTATORS) save.mutators = [...save.mutators, m.id];
+        else return;
+        persist();
+        sfx('select');
+        showMenu(shell);
+      };
+      mutEl.append(b);
+    }
+  }
 
   inner.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
     b.onclick = () => {
@@ -465,6 +516,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
   const n = g.firstLevelUp && perkLevel('opening') ? 4 : 3;
   g.firstLevelUp = false;
   let cards: Card[] = dealCards(g, n);
+  if (cards.some((c) => c.rarity === 4)) sfx('win'); // a legendary in the hand gets a fanfare
   let banishMode = false;
   let showStats = false;
   // free rerolls don't raise the price of the paid ones
@@ -491,6 +543,20 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     if (g.pendingLevels > 0) showLevelUp(shell, g, onDone);
     else onDone();
   };
+  const autoPick = () => {
+    const order = { evolution: 5, upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
+    let hand = cards;
+    while (g.pendingLevels > 0) {
+      const best = hand.slice().sort((a, b) => b.rarity - a.rarity || order[b.kind] - order[a.kind])[0];
+      applyCard(g, best);
+      g.pendingLevels--;
+      hand = dealCards(g, 3);
+    }
+    sfx('select');
+    o.remove();
+    hideTip();
+    onDone();
+  };
   const reroll = () => {
     const free = g.stats.rerolls - g.rerollsUsed;
     if (free <= 0) {
@@ -515,7 +581,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     cards.forEach((c, i) => {
       const v = describeCard(g, c);
       const b = document.createElement('button');
-      b.className = 'card';
+      b.className = 'card' + (c.rarity >= 3 ? ` r${c.rarity}` : '');
       b.style.setProperty('--rc', RARITY_COLORS[c.rarity]);
       b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.rarity]}</div><div class="ic">${v.icon}</div><div class="nm">${v.title}</div><div class="ty">${v.type}</div><ul>${v.lines.map((l) => `<li>${l}</li>`).join('')}</ul><div class="ds">${v.desc}</div>`;
       b.onclick = () => pick(c);
@@ -540,6 +606,15 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
         render();
       };
       acts.append(bb);
+    }
+    if (g.pendingLevels > 2 && !banishMode) {
+      // a magnet sweep can bank a dozen levels at once: let the player take the rest in one go
+      const ab = document.createElement('button');
+      ab.className = 'btn small';
+      ab.innerHTML = `<kbd>A</kbd> Auto-pick ${g.pendingLevels}`;
+      ab.title = 'Take the best card from a fresh hand for each remaining level';
+      ab.onclick = autoPick;
+      acts.append(ab);
     }
     const sb = document.createElement('button');
     sb.className = 'btn small';
@@ -567,6 +642,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       const i = parseInt(c.slice(5)) - 1;
       if (cards[i]) pick(cards[i]);
     } else if (c === 'KeyR') reroll();
+    else if (c === 'KeyA' && g.pendingLevels > 2 && !banishMode) autoPick();
     else if (c === 'KeyB' && g.stats.banishes > g.banishesUsed) {
       banishMode = !banishMode;
       render();
@@ -574,6 +650,55 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       showStats = !showStats;
       render();
     }
+  });
+}
+
+/** Supply cache shop: run-only modules for minerals, or a gear requisition for the account. */
+export function showCacheShop(shell: Shell, g: Game, offers: CacheOffer[], gearCost: number, buy: (o: CacheOffer | 'gear' | null) => void, onDone: () => void) {
+  const o = overlay(shell);
+  const close = (choice: CacheOffer | 'gear' | null) => {
+    if (choice === 'gear' && g.player.minerals < gearCost) return;
+    if (choice && choice !== 'gear' && g.player.minerals < choice.price) return;
+    buy(choice);
+    sfx('select');
+    o.remove();
+    onDone();
+  };
+  const box = document.createElement('div');
+  box.className = 'levelup shop';
+  box.innerHTML = `<h2>SUPPLY CACHE</h2><div class="hint">Modules last for this run. You have <b class="minerals">${g.player.minerals} minerals</b>.</div>`;
+  const row = document.createElement('div');
+  row.className = 'cards';
+  offers.forEach((c, i) => {
+    const b = document.createElement('button');
+    const afford = g.player.minerals >= c.price;
+    b.className = 'card' + (c.mod.rarity >= 3 ? ` r${c.mod.rarity}` : '') + (afford ? '' : ' poor');
+    b.style.setProperty('--rc', RARITY_COLORS[c.mod.rarity]);
+    b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.mod.rarity]} module</div><div class="ic">${c.mod.icon}</div><div class="nm">${c.mod.name}</div><ul><li>${c.mod.desc}</li></ul><div class="price">💎 ${c.price}</div>`;
+    b.onclick = () => close(c);
+    row.append(b);
+  });
+  const acts = document.createElement('div');
+  acts.className = 'row';
+  const gb = document.createElement('button');
+  gb.className = 'btn small';
+  gb.innerHTML = `<kbd>G</kbd> Requisition gear (💎 ${gearCost})`;
+  gb.title = 'A random piece of gear for this race, kept after the run';
+  gb.disabled = g.player.minerals < gearCost;
+  gb.onclick = () => close('gear');
+  const lb = document.createElement('button');
+  lb.className = 'btn small';
+  lb.innerHTML = '<kbd>Esc</kbd> Leave';
+  lb.onclick = () => close(null);
+  acts.append(gb, lb);
+  box.append(row, acts);
+  o.append(box);
+  shell.setKeyHandler((k) => {
+    if (k.startsWith('Digit')) {
+      const c = offers[parseInt(k.slice(5)) - 1];
+      if (c) close(c);
+    } else if (k === 'KeyG') close('gear');
+    else if (k === 'Escape') close(null);
   });
 }
 
@@ -715,7 +840,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const maxDmg = Math.max(1, ...r.damage.map((d) => d.dmg));
   const [have, need] = nextPointProgress(r.race);
   box.innerHTML = `<h2 style="color:${won ? 'var(--gold)' : 'var(--danger)'}">${won ? 'Victory' : 'Defeated'}</h2>
-    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.endless ? ' · Endless' : ''}</div>
+    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.difficulty.id ? ` · ${r.difficulty.name}` : ''}${r.mutators.length ? ` · ${r.mutators.length} mutator${r.mutators.length > 1 ? 's' : ''}` : ''}${r.endless ? ' · Endless' : ''}</div>
     ${!won && r.killedBy ? `<div style="margin-top:4px">Killed by <b style="color:var(--danger)">${r.killedBy}</b></div>` : ''}
     <table style="margin:10px 0"><tr><td>Time survived</td><td>${fmtTime(r.time)}</td></tr><tr><td>Level</td><td>${r.level}</td></tr><tr><td>Kills</td><td>${r.kills}</td></tr><tr><td>Bosses</td><td>${r.bosses}</td></tr></table>
     <div class="section-title" style="margin:10px 0 4px">Damage</div>

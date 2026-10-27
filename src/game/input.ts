@@ -1,3 +1,4 @@
+import { hyp } from './math';
 /** Keyboard, mouse and touch input. Movement is read as a normalized vector each frame. */
 export class Input {
   private keys = new Set<string>();
@@ -77,7 +78,7 @@ export class Input {
         if (t.identifier !== this.touchId) continue;
         let dx = t.clientX - this.touchOx;
         let dy = t.clientY - this.touchOy;
-        const len = Math.hypot(dx, dy);
+        const len = hyp(dx, dy);
         const max = 50;
         if (len > max) {
           dx = (dx / len) * max;
@@ -115,11 +116,11 @@ export class Input {
     if (this.down('KeyW') || this.down('ArrowUp')) y -= 1;
     if (this.down('KeyS') || this.down('ArrowDown')) y += 1;
     if (x || y) {
-      const l = Math.hypot(x, y);
+      const l = hyp(x, y);
       return [x / l, y / l];
     }
     if (this.touchId !== null) {
-      const l = Math.hypot(this.touchDx, this.touchDy);
+      const l = hyp(this.touchDx, this.touchDy);
       if (l < 0.15) return [0, 0];
       return [this.touchDx, this.touchDy];
     }

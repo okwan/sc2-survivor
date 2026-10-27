@@ -29,6 +29,10 @@ export interface SaveData {
   settings: Settings;
   lastRace: RaceId;
   lastZone: string;
+  /** Index into DIFFICULTIES for the next run. Hard and Brutal open up on zones the race has cleared. */
+  difficulty: number;
+  /** Mutator ids for the next run (cleared zones only). */
+  mutators: string[];
 }
 
 const KEY = 'sc2-survivor-save-v1';
@@ -46,6 +50,8 @@ function fresh(): SaveData {
     settings: { volume: 0.5, damageNumbers: true, screenShake: true, zoom: 1 },
     lastRace: 'terran',
     lastZone: 'marsara',
+    difficulty: 0,
+    mutators: [],
   };
 }
 
@@ -61,6 +67,8 @@ function load(): SaveData {
     data.settings = { ...f.settings, ...(data.settings ?? {}) };
     data.perks ??= {};
     data.vespene ??= 0;
+    data.difficulty ??= 0;
+    data.mutators ??= [];
     return data;
   } catch {
     return fresh();

@@ -139,6 +139,19 @@ kbd {
 .zone h3 { font-size: 19px; }
 .zone .meta { font-size: 13px; color: var(--muted); }
 .zone p { font-size: 13px; margin: 6px 0 0; color: #b8c8d8; }
+.diffs { display: flex; gap: 10px; margin-top: 10px; }
+.diff { flex: 1; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.diff b { color: var(--dc); font-size: 16px; }
+.diff span { font-size: 12px; color: var(--muted); }
+.diff.sel { border-color: var(--dc); box-shadow: 0 0 16px -6px var(--dc); }
+.diff.locked { opacity: 0.45; cursor: not-allowed; }
+.mutators { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.mutators:empty { display: none; }
+.mut-title { width: 100%; font-size: 13px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+.mut-title span { letter-spacing: 0; text-transform: none; }
+.mut { padding: 5px 9px; font-size: 13px; background: var(--panel-2); border: 1px solid var(--line); }
+.mut span { color: var(--gold); font-weight: 700; }
+.mut.sel { border-color: #ff8040; box-shadow: 0 0 12px -4px #ff8040; color: #ffd0b0; }
 .menu-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
 .menu-actions .btn.primary { font-size: 22px; padding: 14px 44px; }
 .footer { text-align: center; margin-top: 28px; font-size: 12px; color: #5a6a7a; }
@@ -268,6 +281,12 @@ kbd {
 .card:nth-child(4) { animation-delay: 0.15s; }
 @keyframes cardin { from { opacity: 0; transform: translateY(20px); } }
 .card:hover { transform: translateY(-4px); }
+.card.poor { opacity: 0.5; }
+.card .price { position: absolute; left: 0; right: 0; bottom: 12px; font-size: 18px; font-weight: 800; color: #7ad8ff; }
+.shop .card { min-height: 230px; }
+.card.r3 { box-shadow: 0 0 34px -4px var(--rc), inset 0 0 50px -18px var(--rc); }
+.card.r4 { animation: cardin 0.25s backwards, legend 1.4s ease-in-out infinite alternate; }
+@keyframes legend { from { box-shadow: 0 0 26px -4px var(--rc), inset 0 0 50px -18px var(--rc); } to { box-shadow: 0 0 52px 4px var(--rc), inset 0 0 70px -14px var(--rc); } }
 .card .rar { font-size: 12px; font-weight: 800; letter-spacing: 0.2em; color: var(--rc); text-transform: uppercase; }
 .card .ic { font-size: 46px; margin: 8px 0 4px; }
 .card .nm { font-size: 21px; font-weight: 800; color: var(--rc); }
