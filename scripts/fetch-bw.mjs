@@ -146,7 +146,18 @@ function inventory(archives, order, src) {
       for (const tail of ['\\staredit\\scenario.chk', '']) {
         const c = `${dir}\\${r}\\${r}${String(i).padStart(2, '0')}${tail}`;
         const d = read(c);
-        if (d) camp.push(`${c} ${d.length}`);
+        if (!d) continue;
+        // ERA = tileset, DIM = size in tiles
+        const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
+        let era = -1, w = 0, h = 0;
+        for (let o = 0; o + 8 <= d.length; ) {
+          const id = Buffer.from(d.subarray(o, o + 4)).toString('latin1');
+          const len = v.getInt32(o + 4, true);
+          if (id === 'ERA ') era = v.getUint16(o + 8, true) & 7;
+          if (id === 'DIM ') { w = v.getUint16(o + 8, true); h = v.getUint16(o + 10, true); }
+          o += 8 + Math.max(0, len);
+        }
+        camp.push(`${c.replace(/\\staredit\\scenario\.chk$/, '')} era${era} ${w}x${h}`);
       }
     }
   }
@@ -159,6 +170,8 @@ function inventory(archives, order, src) {
       if (d) music.push(`${c} ${d.length}`);
     }
   console.log('inventory: music ' + music.join(' | '));
+  const mt = read('music\\title.wav');
+  if (mt) console.log('inventory: title.wav head ' + Buffer.from(mt.subarray(0, 48)).toString('hex') + ' nonzero ' + mt.reduce((n, b, i) => n + (i > 44 && b !== 0 && b !== 128 ? 1 : 0), 0));
   const bwm = archives[order.indexOf('broodwar.mpq')];
   if (bwm) for (const c of ['(listfile)', 'rez\\stat_txt.tbl', 'music\\title.wav', 'smk\\blizzard.smk']) console.log(`inventory: broodwar.mpq ${c} ${bwm.hasFile(c)}`);
   for (const c of cands) {
