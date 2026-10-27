@@ -1,5 +1,6 @@
 import type { GearItem, GearSlot } from '../data/items';
 import { PERKS, gearScore } from '../data/items';
+import { HERO_BY_ID, defaultHero, type HeroDef } from '../data/heroes';
 import { TALENTS, TALENT_CAP, talentXpForPoint, type TalentNode } from '../data/talents';
 import { RACES, addMods, addSpellMod, type RaceId, type SpellMod, type StatMods } from '../data/types';
 
@@ -33,6 +34,12 @@ export interface SaveData {
   difficulty: number;
   /** Mutator ids for the next run (cleared zones only). */
   mutators: string[];
+  /** Achievement id -> time it was earned. */
+  achievements: Record<string, number>;
+  /** Selected hero per race. */
+  heroes: Partial<Record<RaceId, string>>;
+  /** Zone id -> races that have cleared it (for cross-race achievements). */
+  clearedBy: Record<string, RaceId[]>;
 }
 
 const KEY = 'sc2-survivor-save-v1';
@@ -52,6 +59,9 @@ function fresh(): SaveData {
     lastZone: 'marsara',
     difficulty: 0,
     mutators: [],
+    achievements: {},
+    heroes: {},
+    clearedBy: {},
   };
 }
 
@@ -69,6 +79,16 @@ function load(): SaveData {
     data.vespene ??= 0;
     data.difficulty ??= 0;
     data.mutators ??= [];
+    data.achievements ??= {};
+    data.heroes ??= {};
+    data.clearedBy ??= {};
+    // earlier saves: count zones already cleared toward the hero unlocks
+    for (const r of RACES) {
+      for (let i = 0; i < data.races[r].zonesCleared; i++) {
+        const z = ['marsara', 'char', 'aiur', 'korhal', 'ulnar'][i];
+        if (z && !(data.clearedBy[z] ??= []).includes(r)) data.clearedBy[z].push(r);
+      }
+    }
     return data;
   } catch {
     return fresh();
@@ -86,6 +106,20 @@ export function persist() {
 export function resetSave() {
   save = fresh();
   persist();
+}
+
+// ------------------------------------------------------------ heroes
+export function heroUnlocked(h: HeroDef): boolean {
+  if (!h.unlock) return true;
+  if (save.achievements[h.unlock]) return true;
+  // clear-zone unlocks also count clears from before achievements existed
+  const m = /^clear_(\w+)_(terran|zerg|protoss)$/.exec(h.unlock);
+  return !!m && (save.clearedBy[m[1]] ?? []).includes(m[2] as RaceId);
+}
+
+export function currentHero(race: RaceId): HeroDef {
+  const h = HERO_BY_ID[save.heroes[race] ?? ''];
+  return h && h.race === race && heroUnlocked(h) ? h : defaultHero(race);
 }
 
 // ------------------------------------------------------------ talents

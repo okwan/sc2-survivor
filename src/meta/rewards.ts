@@ -1,5 +1,6 @@
 import { ZONES } from '../data/enemies';
 import { mutatorBonus } from '../data/mutators';
+import { ACHIEVEMENTS, type AchievementDef } from '../data/achievements';
 import { RACES } from '../data/types';
 import type { RunResult } from '../game/game';
 import { bestRaceXp, perkLevel, persist, pointsEarned, save } from './save';
@@ -11,6 +12,7 @@ export interface Rewards {
   pointsBefore: number;
   pointsAfter: number;
   unlocked: string | null;
+  achievements: AchievementDef[];
 }
 
 export function grantRewards(r: RunResult): Rewards {
@@ -48,6 +50,16 @@ export function grantRewards(r: RunResult): Rewards {
     }
   }
   rs.bestTimes[r.zone.id] = Math.max(rs.bestTimes[r.zone.id] ?? 0, r.time);
+  if (r.won && !(save.clearedBy[r.zone.id] ??= []).includes(r.race)) save.clearedBy[r.zone.id].push(r.race);
+  const stats = {
+    won: r.won, race: r.race, zone: r.zone.id, time: r.time, kills: r.kills, bosses: r.bosses, elites: r.elites, evolved: r.evolved,
+    difficulty: r.difficulty.id, mutators: r.mutators.length, endless: r.endless,
+  };
+  const achievements = ACHIEVEMENTS.filter((a) => !save.achievements[a.id] && a.test(stats, save.clearedBy));
+  for (const a of achievements) {
+    save.achievements[a.id] = Date.now();
+    save.vespene += a.vespene;
+  }
   persist();
-  return { lines, total, vespene, pointsBefore, pointsAfter: pointsEarned(r.race), unlocked };
+  return { lines, total, vespene, pointsBefore, pointsAfter: pointsEarned(r.race), unlocked, achievements };
 }

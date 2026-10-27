@@ -5,7 +5,7 @@ import { setVolume, unlockAudio } from './game/audio';
 import { Game } from './game/game';
 import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
-import { save } from './meta/save';
+import { currentHero, save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { applyBwChrome } from './bw/ui';
@@ -82,7 +82,7 @@ async function boot() {
       keyHandler = fn;
     },
     heroPreview(race) {
-      const bw = bwSprite(`hero:${race}`);
+      const bw = bwSprite(currentHero(race).sprite) ?? bwSprite(`hero:${race}`);
       let cv = bw ? undefined : previews.get(race);
       if (!cv) {
         try {
