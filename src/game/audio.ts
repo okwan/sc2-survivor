@@ -1,12 +1,15 @@
 import { bwBundled, bwFile, fetchInto } from '../bw/assets';
 import { BW_SOUND_FILES, BW_SOUNDS } from '../bw/sounds';
+import { WC3_SOUND_FILES } from '../wc3/sounds';
+import { wc3SoundUrl } from '../wc3/sprites';
 import { wowSound } from '../wow/ui';
 
 /**
  * Sound effects: StarCraft's own sounds when the site ships them (src/bw/sounds.ts), otherwise a
- * tiny WebAudio synth. Calls are throttled per sound.
+ * tiny WebAudio synth. Calls are throttled per sound. The player's hero and spells use Warcraft III's
+ * own sounds instead (src/wc3/sounds.ts, see wc3Sfx).
  */
-type Sfx = 'shoot' | 'hit' | 'explode' | 'pickup' | 'level' | 'boss' | 'hurt' | 'dash' | 'select' | 'zap' | 'win' | 'lose';
+export type Sfx = 'shoot' | 'hit' | 'explode' | 'pickup' | 'level' | 'boss' | 'hurt' | 'dash' | 'select' | 'zap' | 'win' | 'lose';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -47,6 +50,57 @@ function loadSamples() {
     );
     if (!samples.size) loading = null;
   })();
+  loadWc3Samples();
+}
+
+const wc3Samples = new Map<string, AudioBuffer>();
+let wc3Loading = false;
+const wc3Last = new Map<string, number>();
+
+/** Downloads and decodes the shipped Warcraft III sounds (once). */
+function loadWc3Samples() {
+  if (wc3Loading || !ctx) return;
+  wc3Loading = true;
+  const c = ctx;
+  for (const p of WC3_SOUND_FILES) {
+    const url = wc3SoundUrl(p);
+    if (!url) continue;
+    void fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
+      .then((b) => c.decodeAudioData(b))
+      .then((buf) => wc3Samples.set(p, buf))
+      .catch(() => {});
+  }
+}
+
+/** True when the site ships any of these Warcraft III sounds. */
+export function wc3HasSound(paths: string[] | undefined): boolean {
+  return !!paths?.some((p) => wc3SoundUrl(p));
+}
+
+/** Plays one of these Warcraft III sounds at random; false when the site doesn't ship them (use a fallback). */
+export function wc3Sfx(paths: string[] | undefined, gain = 0.8): boolean {
+  if (!wc3HasSound(paths)) return false;
+  if (!ctx || volume <= 0) return true;
+  const now = ctx.currentTime;
+  const key = paths![0];
+  if ((wc3Last.get(key) ?? -1) + 0.08 > now) return true;
+  wc3Last.set(key, now);
+  const have = paths!.filter((p) => wc3Samples.has(p));
+  if (have.length) play(wc3Samples.get(have[Math.floor(Math.random() * have.length)])!, gain);
+  return true;
+}
+
+function play(buf: AudioBuffer, gain: number) {
+  if (!ctx || !master || voices >= MAX_VOICES) return;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  src.connect(g).connect(master);
+  voices++;
+  src.onended = () => voices--;
+  src.start();
 }
 
 /** Plays one of a sound's StarCraft samples; false when none is loaded. */
@@ -55,15 +109,7 @@ function sample(key: string, gain = 1): boolean {
   if (!list || !ctx || !master) return false;
   const have = list.filter((p) => samples.has(p));
   if (!have.length) return false;
-  if (voices >= MAX_VOICES) return true;
-  const src = ctx.createBufferSource();
-  src.buffer = samples.get(have[Math.floor(Math.random() * have.length)])!;
-  const g = ctx.createGain();
-  g.gain.value = gain;
-  src.connect(g).connect(master);
-  voices++;
-  src.onended = () => voices--;
-  src.start();
+  play(samples.get(have[Math.floor(Math.random() * have.length)])!, gain);
   return true;
 }
 

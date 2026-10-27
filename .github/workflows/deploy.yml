@@ -41,8 +41,6 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
           WC3_ARCHIVE_URL: ${{ vars.WC3_ARCHIVE_URL }}
-          WC3_PREVIEW: ${{ github.ref != 'refs/heads/main' && 'archmage-walk,tauren-walk,deathknight-attack' || '' }}
-          WC3_LIST_ICONS: 1
       # The WoW 1.12 interface (frames, buttons, action bar, icons, fonts) is converted at deploy time;
       # converted files are cached between runs so the client is only downloaded once.
       - uses: actions/cache@v4

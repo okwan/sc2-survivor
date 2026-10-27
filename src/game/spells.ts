@@ -1,7 +1,8 @@
 import { Sprite } from 'pixi.js';
 import { bwSprite, orientBw } from '../bw/assets';
 import { fx, minionTexture } from '../render/textures';
-import { sfx } from './audio';
+import { sfx, wc3HasSound, wc3Sfx, type Sfx } from './audio';
+import { WC3_HERO_ATTACK_SOUNDS, WC3_SPELL_SOUNDS } from '../wc3/sounds';
 import type { Enemy, SpellInstance } from './entities';
 import type { Game } from './game';
 import { hyp } from './math';
@@ -13,6 +14,12 @@ function angleDiff(a: number, b: number): number {
   while (d > Math.PI) d -= TAU;
   while (d < -Math.PI) d += TAU;
   return d;
+}
+
+/** A cast's Warcraft III sound; the hero's starting spell is their attack, voiced as their swing starts (game.ts). */
+function castSfx(g: Game, id: string, fallback?: Sfx) {
+  if (id === g.hero.startSpell && wc3HasSound(WC3_HERO_ATTACK_SOUNDS[g.hero.art])) return;
+  if (!wc3Sfx(WC3_SPELL_SOUNDS[id]) && fallback) sfx(fallback);
 }
 
 /** Called when a spell's cooldown elapses. Returns false if it had nothing to do (retry soon). */
@@ -31,7 +38,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
         if (i >= targets.length) a += (Math.random() - 0.5) * 0.5;
         g.spawnProjectile(p.x, p.y, a, st.speed, st.damage, st.area, st.pierce, st.duration, s.slot, def.color, def.tags);
       }
-      sfx('shoot');
+      castSfx(g, def.id, 'shoot');
       return true;
     }
     case 'lob': {
@@ -42,6 +49,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
         const jitter = i >= targets.length ? 60 : 0;
         g.addLob(p.x, p.y, t.x + (Math.random() - 0.5) * jitter, t.y + (Math.random() - 0.5) * jitter, st.duration, st.damage, st.area, s.slot, def.color, def.tags);
       }
+      castSfx(g, def.id);
       return true;
     }
     case 'cone': {
@@ -77,7 +85,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
         const d = Math.random() * reach * 0.8;
         g.addFx(fx.soft(), p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, i % 2 ? 0xffd040 : 0xff5010, 0.2, 0.45, 0.3, 0.8);
       }
-      sfx(isBlade ? 'hit' : 'shoot');
+      castSfx(g, def.id, isBlade ? 'hit' : 'shoot');
       return true;
     }
     case 'aura': {
@@ -103,7 +111,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       const targets = g.denseTargets(p.x, p.y, 560, st.count);
       if (!targets.length) return false;
       for (const t of targets) g.addField(t.x, t.y, st.area, st.damage, st.duration, s.slot, def.color, def.id === 'acidpool' ? 0.35 : 0.15, def.tags);
-      if (def.id === 'storm') sfx('zap');
+      castSfx(g, def.id, def.id === 'storm' ? 'zap' : undefined);
       return true;
     }
     case 'chain': {
@@ -124,7 +132,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
         }
         g.addChain(pts, def.color);
       }
-      if (fired) sfx('zap');
+      if (fired) castSfx(g, def.id, 'zap');
       return fired;
     }
     case 'beam': {
@@ -151,7 +159,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
         g.addFx(fx.soft(), p.x + dx * 20, p.y + dy * 20, 0xffffff, 0.6, 0.2, 0.2, 1);
       }
       g.shake(4);
-      sfx('zap');
+      castSfx(g, def.id, 'zap');
       return true;
     }
     case 'nova': {
@@ -162,12 +170,13 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       });
       g.addFx(fx.ring(), p.x, p.y, def.color, 0.1, (st.area * 2) / 224, 0.35, 1);
       g.addFx(fx.soft(), p.x, p.y, def.color, 0.5, (st.area * 2) / 128, 0.3, 0.5);
-      sfx('explode');
+      castSfx(g, def.id, 'explode');
       return true;
     }
     case 'barrier': {
       p.barrier = Math.max(p.barrier, st.damage);
       p.barrierTime = st.duration;
+      castSfx(g, def.id);
       return true;
     }
     case 'summon':

@@ -15,7 +15,7 @@ import { glyph } from '../render/glyphs';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
 import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, walkFrame, type BwSprite } from '../bw/assets';
 import { mapStart, type MapGround } from '../bw/map';
-import { deathSfx, setSfxRace, sfx } from './audio';
+import { deathSfx, setSfxRace, sfx, wc3Sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
 import { MAX_SLOTS } from './entities';
@@ -25,6 +25,7 @@ import type { Input } from './input';
 import { bwIcon, dashIcon, spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 import { wc3AnimLength, wc3Frame, wc3Hero, type Wc3Sprite } from '../wc3/sprites';
+import { WC3_HERO_ATTACK_SOUNDS } from '../wc3/sounds';
 
 const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no real map
 const GRID_HALF = 3600; // half-size of the spatial grid around the player
@@ -2124,7 +2125,10 @@ export class Game {
         const ok = castSpell(this, sp);
         sp.timer = ok ? sp.stats.cooldown : 0.15;
         // a new swing starts only once the last one has played out
-        if (ok && this.heroWc3 && this.time - this.castAt > wc3AnimLength(this.heroWc3, 'attack')) this.castAt = this.time;
+        if (ok && this.heroWc3 && this.time - this.castAt > wc3AnimLength(this.heroWc3, 'attack')) {
+          this.castAt = this.time;
+          wc3Sfx(WC3_HERO_ATTACK_SOUNDS[this.hero.art]);
+        }
         if (ok && this.flags.has('echo') && Math.random() < 0.15) this.timers.push({ at: this.time + 0.15, fn: () => castSpell(this, sp) });
         if (ok && this.gearFx.has('twincast') && ++this.twinCount % 4 === 0) this.timers.push({ at: this.time + 0.2, fn: () => castSpell(this, sp) });
       }

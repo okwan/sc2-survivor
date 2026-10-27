@@ -144,9 +144,16 @@ async function fillCache() {
       if (near.length) console.warn(`fetch-wc3:   ${p} -> maybe ${near.join(' | ')}`);
     }
   }
-  // keep the archive's file list so later (cached) runs can suggest names for icons that weren't found
-  const listfile = read('(listfile)');
-  if (listfile) writeFileSync(join(cacheDir, 'listfile.txt'), listfile);
+  // keep every archive's file list (merged) so later (cached) runs can suggest names for files that weren't found
+  const names = new Set();
+  for (const a of archives) {
+    if (!a.hasFile('(listfile)')) continue;
+    const f = a.openFile('(listfile)');
+    for (const l of new TextDecoder('latin1').decode(f.read().slice()).split(/\r?\n/)) if (l) names.add(l);
+    f.close();
+  }
+  if (names.size) writeFileSync(join(cacheDir, 'listfile.txt'), [...names].join('\n'));
+  console.log(`fetch-wc3: listfile has ${names.size} names`);
   if (process.env.WC3_LIST_ICONS) {
     // handy when picking ability and item icons for src/wc3/*.ts
     const list = new TextDecoder().decode(read('(listfile)') ?? new Uint8Array());
@@ -192,6 +199,12 @@ function png(width, height, rgba) {
 
 async function main() {
   await fillCache();
+  // handy when picking sounds and icons for src/wc3/*.ts: WC3_FIND=<regex> lists matching archive paths
+  if (process.env.WC3_FIND && existsSync(join(cacheDir, 'listfile.txt'))) {
+    const re = new RegExp(process.env.WC3_FIND, 'i');
+    const hits = readFileSync(join(cacheDir, 'listfile.txt'), 'latin1').split(/\r?\n/).filter((l) => re.test(l));
+    for (let i = 0; i < hits.length; i += 30) console.log(`fetch-wc3: find ${hits.slice(i, i + 30).join(' ')}`);
+  }
   const W = await import('war3-model');
   const dest = join(outDir, 'wc3');
   const got = [];
