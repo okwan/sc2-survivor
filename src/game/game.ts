@@ -426,6 +426,16 @@ export class Game {
       duration: b.duration * (1 + (m.duration ?? 0)) * (k === 'bolt' ? 1 : s.duration),
       speed: k === 'bolt' || k === 'summon' ? b.speed * s.projSpeed : b.speed,
     };
+    const ev = sp.evo;
+    if (ev) {
+      const st = sp.stats;
+      st.damage *= ev.mult?.damage ?? 1;
+      st.area *= ev.mult?.area ?? 1;
+      st.cooldown *= ev.mult?.cooldown ?? 1;
+      st.duration *= ev.mult?.duration ?? 1;
+      st.count += ev.add?.count ?? 0;
+      st.pierce += ev.add?.pierce ?? 0;
+    }
   }
 
   learnSpell(id: string, bonus: number) {

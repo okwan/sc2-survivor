@@ -2,6 +2,7 @@ import type { Sprite, Texture } from 'pixi.js';
 import type { BwSprite } from '../bw/assets';
 import type { AffixId } from '../data/affixes';
 import type { BossDef, EnemyDef } from '../data/enemies';
+import type { EvolutionDef } from '../data/evolutions';
 import type { SpellDef, SpellStats } from '../data/spells';
 
 export const MAX_SLOTS = 11; // spell slots + internal sources (napalm, nuke, feedback, dash, racial)
@@ -237,4 +238,6 @@ export interface SpellInstance {
   /** Mastery cards taken after max rank. */
   mastery?: number;
   nextSpawn: number;
+  /** Set once the spell has evolved. */
+  evo?: EvolutionDef;
 }

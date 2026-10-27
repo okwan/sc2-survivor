@@ -518,7 +518,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     else onDone();
   };
   const autoPick = () => {
-    const order = { upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
+    const order = { evolution: 5, upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
     let hand = cards;
     while (g.pendingLevels > 0) {
       const best = hand.slice().sort((a, b) => b.rarity - a.rarity || order[b.kind] - order[a.kind])[0];

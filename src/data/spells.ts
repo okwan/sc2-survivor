@@ -98,6 +98,18 @@ export const SPELLS: SpellDef[] = [
     base: S(9, 0.7, 1, 320, 0, 4, 600),
     ranks: [{ damage: 3 }, { count: 1 }, { cooldown: -0.1 }, { damage: 4 }, { count: 1 }, { damage: 5, cooldown: -0.1 }, { count: 1 }],
   },
+  {
+    id: 'emp', race: 'terran', name: 'EMP Shockwave', icon: '🌀', color: 0x7ad8ff, kind: 'nova', tags: ['tech'],
+    desc: 'A Science Vessel EMP pulses out from you, stunning and pushing back enemies.',
+    base: S(20, 4, 1, 160, 0, 0.4, 0),
+    ranks: [{ damage: 7 }, { area: 25 }, { cooldown: -0.4 }, { damage: 9 }, { area: 25 }, { damage: 11, cooldown: -0.4 }, { area: 30, damage: 14 }],
+  },
+  {
+    id: 'irradiate', race: 'terran', name: 'Irradiate', icon: '☢️', color: 0x9cff3c, kind: 'field', tags: ['tech', 'bio'],
+    desc: 'Irradiates the densest pack, poisoning everything nearby.',
+    base: S(7, 4.5, 1, 90, 0, 4, 0),
+    ranks: [{ damage: 3 }, { area: 15 }, { count: 1 }, { damage: 4 }, { duration: 1, area: 10 }, { count: 1 }, { damage: 6, cooldown: -0.6 }],
+  },
   // ---------------------------------------------------------------- ZERG
   {
     id: 'spines', race: 'zerg', name: 'Needle Spines', icon: '🦔', color: 0xc6ff5c, kind: 'bolt', tags: ['bio'],
@@ -141,6 +153,18 @@ export const SPELLS: SpellDef[] = [
     base: S(22, 3.4, 1, 150, 0, 0.4, 0),
     ranks: [{ damage: 8 }, { area: 25 }, { cooldown: -0.4 }, { damage: 10 }, { area: 25 }, { damage: 12, cooldown: -0.4 }, { area: 30, damage: 15 }],
   },
+  {
+    id: 'lurker', race: 'zerg', name: 'Lurker Spines', icon: '🦂', color: 0xd0a060, kind: 'beam', tags: ['bio'],
+    desc: 'Subterranean spines erupt in a line through every enemy in their path.',
+    base: S(38, 3, 1, 20, 99, 0.35, 0),
+    ranks: [{ damage: 12 }, { cooldown: -0.35 }, { area: 6 }, { damage: 16 }, { count: 1 }, { damage: 20, cooldown: -0.35 }, { count: 1 }],
+  },
+  {
+    id: 'glaive', race: 'zerg', name: 'Glaive Wurm', icon: '🪃', color: 0xff9ad5, kind: 'chain', tags: ['acid', 'bio'],
+    desc: 'Mutalisk glaives that bounce between enemies.',
+    base: S(16, 1.5, 1, 160, 2, 0.2, 0),
+    ranks: [{ pierce: 1 }, { damage: 5 }, { count: 1 }, { pierce: 1 }, { damage: 7, cooldown: -0.2 }, { count: 1 }, { pierce: 2, damage: 9 }],
+  },
   // ---------------------------------------------------------------- PROTOSS
   {
     id: 'blades', race: 'protoss', name: 'Psi Blades', icon: '⚔️', color: 0x7ae0ff, kind: 'cone', tags: ['psionic'],
@@ -183,6 +207,18 @@ export const SPELLS: SpellDef[] = [
     desc: 'Releases a wave of purifying energy that stuns nearby enemies.',
     base: S(26, 3.6, 1, 170, 0, 0.4, 0),
     ranks: [{ damage: 8 }, { area: 25 }, { cooldown: -0.45 }, { damage: 12 }, { area: 25 }, { damage: 14, cooldown: -0.4 }, { area: 30, damage: 18 }],
+  },
+  {
+    id: 'scarab', race: 'protoss', name: 'Reaver Scarabs', icon: '🎯', color: 0xffc04a, kind: 'lob', tags: ['tech', 'explosive'],
+    desc: 'Launches scarabs that crawl onto enemy packs and detonate.',
+    base: S(34, 2.8, 1, 65, 0, 0.7, 0),
+    ranks: [{ damage: 10 }, { count: 1 }, { area: 12 }, { damage: 12 }, { count: 1, cooldown: -0.3 }, { area: 12, damage: 12 }, { count: 2 }],
+  },
+  {
+    id: 'psiaura', race: 'protoss', name: 'Psionic Aura', icon: '🔮', color: 0xb48cff, kind: 'aura', tags: ['psionic'],
+    desc: 'A Dark Archon\'s aura of feedback that burns nearby enemies.',
+    base: S(9, 0.5, 1, 90, 0, 0, 0),
+    ranks: [{ area: 15 }, { damage: 3 }, { area: 15 }, { damage: 4 }, { cooldown: -0.08, area: 10 }, { damage: 4 }, { area: 20, damage: 5 }],
   },
 ];
 

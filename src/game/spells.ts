@@ -50,7 +50,8 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       const t = g.bosses.find((b) => b.hp > 0 && hyp(b.x - p.x, b.y - p.y) < reach + b.radius) ?? g.nearestEnemy(p.x, p.y, reach + 40);
       if (!t) return false;
       const isBlade = def.id === 'blades';
-      const half = isBlade ? 1.05 : 0.6;
+      const ring = s.evo?.effect === 'ring';
+      const half = ring ? Math.PI : isBlade ? 1.05 : 0.6;
       const dir = Math.atan2(t.y - p.y, t.x - p.x);
       p.facing = dir;
       const hits = (mult: number) =>
@@ -65,7 +66,12 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       if (isBlade && g.flags.has('darkTemplar')) hits(1);
       const tex = isBlade ? fx.arc() : fx.wedge();
       const scale = isBlade ? (reach * 1.15) / 210 : reach / 256;
-      g.addFx(tex, p.x, p.y, def.color, scale * 0.85, scale, isBlade ? 0.18 : 0.28, 0.9, dir, isBlade ? 0.5 : 0, isBlade ? 0 : 0.5);
+      // evolved cones fire in all directions
+      const arms = ring ? (isBlade ? 3 : 5) : 1;
+      for (let k = 0; k < arms; k++) {
+        const d2 = dir + (k / arms) * TAU;
+        g.addFx(tex, p.x, p.y, def.color, scale * 0.85, scale, isBlade ? 0.18 : 0.28, 0.9, d2, isBlade ? 0.5 : 0, isBlade ? 0 : 0.5);
+      }
       if (!isBlade) for (let i = 0; i < 4; i++) {
         const a = dir + (Math.random() - 0.5) * 1.0;
         const d = Math.random() * reach * 0.8;
