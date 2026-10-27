@@ -37,6 +37,9 @@ html.wow-dialog .modal {
   box-shadow: none;
   padding: 10px 14px;
 }
+/* modals can't clip (the border layer sits outside their box), so the overlay scrolls instead */
+html.wow-dialog .modal { overflow: visible; max-height: none; margin: 32px auto; }
+html.wow-dialog .overlay { overflow-y: auto; align-items: safe center; }
 /* the border goes on a layer above the background (an element's own border paints under its ::before) */
 html.wow-dialog .panel::after,
 html.wow-dialog .modal::after {
