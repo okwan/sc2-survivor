@@ -23,7 +23,7 @@ const localSource = process.argv[3];
 // the file lists live in src/bw/*.ts as quoted literal paths; keep one source of truth
 const srcDir = new URL('../src/bw/', import.meta.url);
 const assetsSrc = readdirSync(srcDir).filter((n) => n.endsWith('.ts')).map((n) => readFileSync(new URL(n, srcDir), 'utf8')).join('\n');
-const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset|game|glue|font|cursor|sound)\/[\w/]+\.(?:grp|wpe|cv5|vx4|vr4|pcx|fnt|wav))'/g)].map((m) => m[1]))];
+const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset|game|glue|font|cursor|sound|dlgs)\/[\w/]+\.(?:grp|wpe|cv5|vx4|vr4|pcx|fnt|wav))'/g)].map((m) => m[1]))];
 
 function findMpqs(dir) {
   const out = {};
@@ -84,8 +84,8 @@ const ZONE_MAPS = {
   aiur: { era: 4, prefer: ['campaign\\protoss\\protoss10', 'campaign\\protoss\\protoss08'] },
   korhal: { era: 1, prefer: ['campaign\\terran\\terran09', 'campaign\\protoss\\protoss04'] },
   ulnar: { era: 7, fallback: 2, prefer: [] },
-  braxis: { era: 6, fallback: 2, prefer: [] },
-  shakuras: { era: 5, fallback: 0, prefer: [] },
+  braxis: { era: 6, fallback: 2, prefer: ['campaign\\expprotoss\\protoss04', 'campaign\\expprotoss\\protoss05', 'campaign\\expterran\\terran01'] },
+  shakuras: { era: 5, fallback: 0, prefer: ['campaign\\expprotoss\\protoss02'] },
 };
 const MINERALS = { 176: 'unit/neutral/min01.grp', 177: 'unit/neutral/min02.grp', 178: 'unit/neutral/min03.grp' };
 const GEYSER = 188;
@@ -370,6 +370,54 @@ function logIcons(read) {
   console.log('fetch-bw: icons ' + rows.join(' | '));
 }
 
+// ------------------------------------------------------------ music
+// The soundtrack isn't in the Brood War download above (its music\*.wav are sub-second stubs).
+// The Brood War CD's INSTALL.EXE is itself an MPQ holding the full tracks; we pull those out and
+// compress them to MP3 (lamejs, so the build needs no system tools) so the site can stream them.
+const MUSIC_URL = process.env.BW_MUSIC_URL || 'https://archive.org/download/starcraft-expansion-set-brood-war/INSTALL.EXE';
+const TRACKS = ['title', 'terran1', 'terran2', 'terran3', 'zerg1', 'zerg2', 'zerg3', 'protoss1', 'protoss2', 'protoss3', 'tdefeat', 'zdefeat', 'pdefeat', 'trdyroom', 'zrdyroom', 'prdyroom'];
+
+async function buildMusic(MPQ, outDir, got) {
+  const dir = mkdtempSync(join(tmpdir(), 'bwm-'));
+  const cd = join(dir, 'install.exe');
+  console.log(`fetch-bw: downloading ${MUSIC_URL}`);
+  await download(MUSIC_URL, cd);
+  const a = await MPQ.open('/bw' + cd, 'r');
+  const wavs = [];
+  for (const t of TRACKS) {
+    const p = `music\\${t}.wav`;
+    if (!a.hasFile(p)) continue;
+    const f = a.openFile(p);
+    const d = f.read().slice();
+    f.close();
+    if (d.length < 1 << 20) continue; // a stub, like the ones in the main download
+    const wav = join(dir, `${t}.wav`);
+    writeFileSync(wav, d);
+    wavs.push([t, wav]);
+  }
+  a.close();
+  mkdirSync(join(outDir, 'bw', 'music'), { recursive: true });
+  // a few encoders at once, one worker thread each
+  const queue = [...wavs];
+  const { Worker } = await import('node:worker_threads');
+  const encode = (workerData) =>
+    new Promise((res, rej) => {
+      const w = new Worker(new URL('./mp3-worker.mjs', import.meta.url), { workerData });
+      w.on('error', rej);
+      w.on('exit', (c) => (c ? rej(new Error(`mp3 worker exited ${c}`)) : res()));
+    });
+  await Promise.all(
+    [0, 1, 2, 3].map(async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        const [t, wav] = job;
+        await encode({ wav, mp3: join(outDir, 'bw', 'music', `${t}.mp3`), kbps: 96 });
+        got.push(`music/${t}.mp3`);
+      }
+    }),
+  );
+  console.log(`fetch-bw: music ${wavs.map(([t]) => t).join(', ')} -> ${(got.filter((p) => p.startsWith('music/')).reduce((n, p) => n + statSync(join(outDir, 'bw', p)).size, 0) / 1e6).toFixed(1)} MB of MP3`);
+}
+
 async function main() {
   const src = await getSourceDir();
   if (!src) return console.warn('fetch-bw: no source available, shipping placeholder art only');
@@ -437,6 +485,11 @@ async function main() {
     console.warn(`fetch-bw: maps failed: ${e.stack || e}`);
   }
   for (const a of archives) a.close();
+  try {
+    await buildMusic(MPQ, outDir, got);
+  } catch (e) {
+    console.warn(`fetch-bw: music failed: ${e.message}`);
+  }
   if (!got.length) return console.warn('fetch-bw: found none of the sprite files');
   writeFileSync(join(outDir, 'bw', 'manifest.json'), JSON.stringify({ files: got, maps }));
   const missing = wanted.filter((p) => !got.includes(p));

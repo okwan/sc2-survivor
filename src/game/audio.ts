@@ -1,4 +1,4 @@
-import { bwFile, fetchInto } from '../bw/assets';
+import { bwBundled, bwFile, fetchInto } from '../bw/assets';
 import { BW_SOUND_FILES, BW_SOUNDS } from '../bw/sounds';
 
 /**
@@ -78,6 +78,44 @@ export function deathSfx(shape: string) {
 export function setVolume(v: number) {
   volume = v;
   if (master) master.gain.value = v * 0.4;
+  if (music) music.volume = Math.min(1, v * MUSIC_LEVEL);
+}
+
+// ------------------------------------------------------------ music
+// StarCraft's soundtrack, compressed to MP3 at deploy (bw/music/<track>.mp3) and streamed.
+const MUSIC_LEVEL = 0.55;
+let music: HTMLAudioElement | null = null;
+let playlist: string[] = [];
+let track = 0;
+
+/** Plays these tracks in order, looping (e.g. ['terran1', 'terran2', 'terran3']); [] stops. Same list again: keeps playing. */
+export function playMusic(tracks: string[], loop = true) {
+  const list = tracks.filter((t) => bwBundled(`music/${t}.mp3`));
+  if (list.join() === playlist.join() && music && !music.ended) return;
+  playlist = list;
+  track = 0;
+  if (!music) {
+    music = new Audio();
+    music.preload = 'auto';
+    music.addEventListener('ended', () => {
+      if (!loop && track === playlist.length - 1) return;
+      track = (track + 1) % playlist.length;
+      startTrack();
+    });
+  }
+  if (!list.length) {
+    music.pause();
+    return;
+  }
+  startTrack();
+}
+
+function startTrack() {
+  if (!music || !playlist.length) return;
+  music.src = `bw/music/${playlist[track]}.mp3`;
+  music.volume = Math.min(1, volume * MUSIC_LEVEL);
+  // browsers block audio until the first click; unlockAudio() retries
+  void music.play().catch(() => {});
 }
 
 function ensure(): AudioContext | null {
@@ -100,6 +138,7 @@ export function unlockAudio() {
   const c = ensure();
   if (c && c.state === 'suspended') void c.resume();
   loadSamples();
+  if (music && music.paused && playlist.length) void music.play().catch(() => {});
 }
 
 function tone(type: OscillatorType, f0: number, f1: number, dur: number, gain: number) {

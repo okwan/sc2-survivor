@@ -1,7 +1,7 @@
 import { Application, Sprite } from 'pixi.js';
 import { ZONE_BY_ID, ZONES } from './data/enemies';
 import type { RaceId } from './data/types';
-import { setVolume, unlockAudio } from './game/audio';
+import { playMusic, setVolume, unlockAudio } from './game/audio';
 import { Game } from './game/game';
 import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
@@ -109,6 +109,10 @@ async function boot() {
       shell.quitRun();
       ui.innerHTML = '<div class="loading">Warping in...</div>';
       const zone = ZONE_BY_ID[zoneId] ?? ZONE_BY_ID.marsara;
+      applyBwChrome(race);
+      // the race's three battle themes, starting at a random one
+      const first = Math.floor(Math.random() * 3);
+      playMusic([0, 1, 2].map((i) => `${race}${((first + i) % 3) + 1}`));
       await ensureZoneFiles(zone.id);
       ui.innerHTML = '';
       dialogs = [];
@@ -119,6 +123,8 @@ async function boot() {
         bossSpawned: (name, title) => hud?.bossBanner(name, title),
         victory: () => openDialog((done) => showVictory(shell, g, done)),
         ended: (r) => {
+          // StarCraft's own defeat theme, or the race's ready room after a win
+          playMusic([`${race[0]}${r.won ? 'rdyroom' : 'defeat'}`], false);
           const rw = grantRewards(r);
           setTimeout(() => showResults(shell, r, rw), r.won ? 300 : 900);
         },

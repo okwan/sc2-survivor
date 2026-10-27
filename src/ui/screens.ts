@@ -12,7 +12,7 @@ import { RACE_DEFS } from '../data/races';
 import { MAX_RANK, SPELL_BY_ID } from '../data/spells';
 import { TALENTS, TALENT_CAP, type TalentNode } from '../data/talents';
 import { RACES, RARITY_COLORS, RARITY_NAMES, STAT_LABELS, fmtStat, type RaceId, type StatKey } from '../data/types';
-import { setVolume, sfx } from '../game/audio';
+import { playMusic, setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
 import type { CacheOffer, Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
@@ -61,6 +61,7 @@ function itemHtml(it: GearItem): string {
 // ================================================================ main menu
 export function showMenu(shell: Shell) {
   clear(shell);
+  playMusic(['title']);
   const race = save.lastRace;
   const rs = save.races[race];
   const menu = document.createElement('div');
