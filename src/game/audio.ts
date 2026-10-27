@@ -178,8 +178,8 @@ function noise(dur: number, gain: number, freq: number) {
 /** Interface sounds the WoW client provides, used when its files are deployed. */
 const WOW_UI: Partial<Record<Sfx, string[]>> = {
   level: ['LevelUp'],
-  select: ['igMainMenuOptionCheckBoxOn', 'uChatScrollButton'],
-  win: ['iQuestComplete', 'QuestComplete'],
+  select: ['iUiMainMenuButtonA'],
+  win: ['iQuestComplete'],
 };
 const wowBufs = new Map<string, AudioBuffer | null>();
 

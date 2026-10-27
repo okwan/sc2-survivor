@@ -19,6 +19,11 @@ const shot = async (name) => {
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log('shot', name);
 };
+// raw textures, to check how the art is laid out
+const tex = ['minimap/ui-minimap-border', 'dialogframe/ui-dialogbox-border', 'dialogframe/ui-dialogbox-gold-border', 'dialogframe/ui-dialogbox-header', 'tooltips/ui-tooltip-border', 'mainmenubar/ui-mainmenubar-dwarf', 'mainmenubar/ui-xp-bar', 'targetingframe/ui-targetingframe', 'buttons/ui-panel-button-up', 'buttons/ui-quickslot2', 'paperdollinfoframe/ui-character-activetab'];
+await page.goto(url);
+await page.setContent(`<body style="background:#468;margin:0;display:flex;flex-wrap:wrap;gap:6px">${tex.map((t) => `<div style="color:#fff;font:10px sans-serif">${t}<br><img src="${url}wow/interface/${t}.png" style="border:1px dashed #f0f"></div>`).join('')}</body>`);
+await shot('0-textures');
 await page.goto(url);
 await page.waitForSelector('[data-a="play"]', { timeout: 30000 });
 await page.waitForTimeout(1500);

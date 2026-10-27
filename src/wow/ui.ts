@@ -37,10 +37,15 @@ export function hasWow(): boolean {
   return !!man;
 }
 
+/** Absolute URL: these end up in CSS variables, and a relative url() there would resolve against the stylesheet. */
+function abs(rel: string): string {
+  return new URL(rel, document.baseURI).href;
+}
+
 /** URL of an interface texture, or null when it isn't in the deployed set. */
 export function wowFile(path: string): string | null {
   const p = path.toLowerCase();
-  return man?.sizes[p] ? `wow/${p}` : null;
+  return man?.sizes[p] ? abs(`wow/${p}`) : null;
 }
 
 export function wowSize(path: string): [number, number] | null {
@@ -51,7 +56,7 @@ export function wowSize(path: string): [number, number] | null {
 export function wowIconUrl(...names: string[]): string | null {
   for (const n of names) {
     const k = n.toLowerCase();
-    if (iconSet.has(k)) return `wow/interface/icons/${k}.png`;
+    if (iconSet.has(k)) return abs(`wow/interface/icons/${k}.png`);
   }
   return null;
 }
@@ -59,7 +64,7 @@ export function wowIconUrl(...names: string[]): string | null {
 /** URL of an interface sound (e.g. 'LevelUp' for Sound/Interface/LevelUp.wav), or null. */
 export function wowSound(name: string): string | null {
   const p = `sound/interface/${name.toLowerCase()}.wav`;
-  return man?.sounds.includes(p) ? `wow/${p}` : null;
+  return man?.sounds.includes(p) ? abs(`wow/${p}`) : null;
 }
 
 // ------------------------------------------------------------ images
@@ -219,7 +224,7 @@ async function loadFonts() {
     faces.map(async ([family, file]) => {
       if (!man?.fonts.includes(file)) return;
       try {
-        const f = new FontFace(family, `url(wow/${file})`);
+        const f = new FontFace(family, `url(${abs(`wow/${file}`)})`);
         document.fonts.add(await f.load());
       } catch {
         // the fallback fonts in style.css take over
