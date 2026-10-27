@@ -1,10 +1,11 @@
 import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
 import { AFFIXES, AFFIX_BY_ID, type AffixId } from '../data/affixes';
 import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
+import type { DailyDef } from '../data/daily';
 import { MODULES, modulePrice, type ModuleDef } from '../data/modules';
 import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
-import { rollGear, type GearItem } from '../data/items';
+import { rollGear, type GearItem, type LegendaryEffect } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import type { HeroDef } from '../data/heroes';
 import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
@@ -49,8 +50,25 @@ export interface RunResult {
   mutators: string[];
   elites: number;
   evolved: number;
+  objectives: number;
+  hero: string;
+  daily: string;
   damage: { name: string; icon: string; dmg: number }[];
   killedBy: string;
+}
+
+/** Optional side missions offered between bosses: hold a beacon, hunt a marked elite, or recover data cores. */
+export interface Objective {
+  kind: 'beacon' | 'bounty' | 'cores';
+  label: string;
+  x: number;
+  y: number;
+  left: number; // seconds remaining
+  progress: number;
+  need: number;
+  target: Enemy | null;
+  uid: number;
+  cores: { x: number; y: number }[];
 }
 
 export interface GameHooks {
@@ -142,7 +160,13 @@ export class Game {
 
   diff: DifficultyDef = DIFFICULTIES[save.difficulty] ?? DIFFICULTIES[0];
   mutators = new Set<string>(save.mutators);
+  /** Date of the daily challenge this run is playing, or ''. */
+  daily = '';
   elitesKilled = 0;
+  /** The current zone objective, if one is running. */
+  objective: Objective | null = null;
+  objectivesDone = 0;
+  private nextObjective = 95;
   private nextEvent = 105;
   private mutT = { rift: 60, lava: 30, missiles: 40 };
   private rifts: { e: Enemy; uid: number; next: number }[] = [];
@@ -234,10 +258,19 @@ export class Game {
   racialAt = 30;
   guardT = 0;
   private reactiveAt = 0;
+  /** Effects of equipped named legendaries. */
+  gearFx = new Set<LegendaryEffect>();
+  private twinCount = 0;
+  private harvestAt = 45;
   private frameMs = 16;
 
-  constructor(app: Application, input: Input, raceId: RaceId, zone: ZoneDef, hooks: GameHooks) {
+  constructor(app: Application, input: Input, raceId: RaceId, zone: ZoneDef, hooks: GameHooks, daily?: DailyDef) {
     this.app = app;
+    if (daily) {
+      this.daily = daily.date;
+      this.diff = DIFFICULTIES[0];
+      this.mutators = new Set(daily.mutators);
+    }
     this.input = input;
     this.hooks = hooks;
     this.zone = zone;
@@ -466,6 +499,8 @@ export class Game {
     addMods(mods, this.hero.stats);
     addMods(mods, this.talentMods);
     addMods(mods, gearStats(this.race.id));
+    this.gearFx.clear();
+    for (const it of Object.values(save.races[this.race.id].gear)) if (it?.effect) this.gearFx.add(it.effect);
     addMods(mods, perkStats());
     addMods(mods, this.passiveMods);
     for (const k in mods) s[k as StatKey] += mods[k as StatKey] ?? 0;
@@ -779,6 +814,7 @@ export class Game {
     if (e.hp <= 0) return;
     if (e.asleep) this.wake(e);
     let dmg = base * (0.92 + Math.random() * 0.16);
+    if ((e.boss || e.elite) && this.gearFx.has('slayer')) dmg *= 1.3;
     let crit = false;
     if (!opts.noCrit && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMult;
@@ -819,6 +855,9 @@ export class Game {
     if (e.hp <= 0) {
       this.killEnemy(e, slot);
     } else if (this.flags.has('darkTemplar') && slot === this.spells.find((s) => s.def.id === 'blades')?.slot && !e.boss && e.hp < e.maxHp * 0.15) {
+      e.hp = 0;
+      this.killEnemy(e, slot);
+    } else if (this.gearFx.has('slayer') && !e.boss && !e.elite && !e.lair && e.hp < e.maxHp * 0.08) {
       e.hp = 0;
       this.killEnemy(e, slot);
     }
@@ -970,6 +1009,7 @@ export class Game {
     }
     let dmg = Math.max(amount * 0.25, amount - this.stats.armor);
     if (this.guardT > 0) dmg *= 0.6;
+    if (this.gearFx.has('bulwark') && p.hp < this.stats.maxHp * 0.4) dmg *= 0.65;
     p.lastHit = this.time;
     if (p.barrier > 0) {
       const a = Math.min(p.barrier, dmg);
@@ -1055,6 +1095,9 @@ export class Game {
       mutators: [...this.mutators],
       elites: this.elitesKilled,
       evolved: this.spells.filter((s) => s.evo).length,
+      objectives: this.objectivesDone,
+      hero: this.hero.id,
+      daily: this.daily,
       killedBy: won ? '' : this.lastHitBy,
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
@@ -1553,6 +1596,101 @@ export class Game {
   }
 
   /** Zone events and mutators: something different happens every minute or so. */
+  private updateObjective(dt: number) {
+    const p = this.player;
+    const o = this.objective;
+    if (!o) {
+      // between bosses (3, 6, 9... minutes), never while one is up or in endless mode
+      if (this.time < this.nextObjective || this.endless || this.bosses.length || this.time > this.zone.minutes * 60 - 60) return;
+      this.nextObjective = this.time + 150 + Math.random() * 30;
+      this.startObjective();
+      return;
+    }
+    o.left -= dt;
+    if (o.kind === 'beacon') {
+      if ((p.x - o.x) ** 2 + (p.y - o.y) ** 2 < 120 * 120) o.progress += dt;
+    } else if (o.kind === 'bounty') {
+      const e = o.target;
+      if (!e || e.uid !== o.uid || e.hp <= 0) o.progress = o.need;
+      else {
+        o.x = e.x;
+        o.y = e.y;
+      }
+    } else {
+      for (let i = o.cores.length - 1; i >= 0; i--) {
+        const c = o.cores[i];
+        if ((p.x - c.x) ** 2 + (p.y - c.y) ** 2 < 40 * 40) {
+          o.cores.splice(i, 1);
+          o.progress++;
+          sfx('pickup');
+        }
+      }
+      if (o.cores.length) [o.x, o.y] = [o.cores[0].x, o.cores[0].y];
+    }
+    if (o.progress >= o.need) {
+      this.objective = null;
+      this.objectivesDone++;
+      this.objectiveReward(o);
+    } else if (o.left <= 0) {
+      this.objective = null;
+      const e = o.target;
+      if (e && e.uid === o.uid && e.hp > 0) e.baseTint = e.sprite.tint = 0xffffff;
+      this.hooks.toast('Objective failed.', '#8a96a8');
+    }
+  }
+
+  private startObjective() {
+    const p = this.player;
+    const kinds: Objective['kind'][] = ['beacon', 'bounty', 'cores'];
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    const a = Math.random() * Math.PI * 2;
+    const [x, y] = this.snapReachable(p.x + Math.cos(a) * 520, p.y + Math.sin(a) * 520);
+    const o: Objective = { kind, label: '', x, y, left: 60, progress: 0, need: 1, target: null, uid: -1, cores: [] };
+    if (kind === 'beacon') {
+      o.label = 'Hold the beacon';
+      o.need = 15;
+    } else if (kind === 'bounty') {
+      const e = this.spawnEnemy(ENEMIES[this.zone.elite], x, y, { elite: true, hpMult: 5, scale: 1.45 });
+      if (!e) return;
+      this.rollAffixes(e, 2);
+      e.baseTint = e.sprite.tint = 0xffd34d;
+      o.target = e;
+      o.uid = e.uid;
+      o.label = `Bounty: ${e.def.name}`;
+    } else {
+      o.label = 'Recover data cores';
+      o.need = 3;
+      o.left = 50;
+      for (let k = 0; k < 3; k++) {
+        const b = a + (k - 1) * 0.9;
+        const [cx, cy] = this.snapReachable(p.x + Math.cos(b) * (380 + k * 120), p.y + Math.sin(b) * (380 + k * 120));
+        o.cores.push({ x: cx, y: cy });
+      }
+      [o.x, o.y] = [o.cores[0].x, o.cores[0].y];
+    }
+    this.objective = o;
+    this.hooks.toast(`New objective: ${o.label}`, '#7fe0ff');
+    sfx('select');
+  }
+
+  private objectiveReward(o: Objective) {
+    const p = this.player;
+    const rar = Math.min(4, Math.max(2, rollRarity(this.stats.luck + this.diff.luck + 0.5) + 1)) as Rarity;
+    this.dropPickup('gear', p.x, p.y - 40, 0, rollGear(this.race.id, rar, this.zone.tier));
+    for (let k = 0; k < 6; k++) this.dropPickup('mineral', p.x + (Math.random() - 0.5) * 100, p.y + (Math.random() - 0.5) * 100, Math.ceil(5 * this.stats.minerals));
+    this.dropPickup('magnet', p.x + 40, p.y, 0);
+    this.hooks.toast(`Objective complete: ${o.label}! Gear dropped.`, '#ffd34d');
+    sfx('level');
+  }
+
+  /** HUD line for the running objective. */
+  objectiveText(): string {
+    const o = this.objective;
+    if (!o) return '';
+    const prog = o.kind === 'beacon' ? `${Math.floor(o.progress)}/${o.need}s` : o.kind === 'cores' ? `${o.progress}/${o.need}` : '';
+    return `${o.label}${prog ? ` ${prog}` : ''} · ${Math.ceil(o.left)}s`;
+  }
+
   private updateEvents() {
     const t = this.time;
     if (t >= this.nextEvent && !this.endless) {
@@ -1807,13 +1945,19 @@ export class Game {
         const ok = castSpell(this, sp);
         sp.timer = ok ? sp.stats.cooldown : 0.15;
         if (ok && this.flags.has('echo') && Math.random() < 0.15) this.timers.push({ at: this.time + 0.15, fn: () => castSpell(this, sp) });
+        if (ok && this.gearFx.has('twincast') && ++this.twinCount % 4 === 0) this.timers.push({ at: this.time + 0.2, fn: () => castSpell(this, sp) });
       }
     }
     updateMinions(this, dt);
+    if (this.gearFx.has('harvest') && this.time >= this.harvestAt) {
+      this.harvestAt = this.time + 45;
+      for (const g of this.gems) g.pulled = true;
+    }
 
     // ---- director
     this.direct(dt);
     this.updateEvents();
+    this.updateObjective(dt);
 
     // ---- enemies
     this.updateEnemies(dt);
@@ -2671,6 +2815,24 @@ export class Game {
       const r = (b.radius + 10) / 112;
       ring.add(b.x, b.y, r, r, 0, b.boss?.enraged ? 0xff3030 : 0xffd040, 0.5 + Math.sin(this.time * 6) * 0.2);
     }
+    const ob = this.objective;
+    if (ob) {
+      const pulse = 0.6 + Math.sin(this.time * 5) * 0.25;
+      if (ob.kind === 'beacon') {
+        disc.add(ob.x, ob.y, 120 / 64, 120 / 64, 0, 0x40d0ff, 0.12);
+        ring.add(ob.x, ob.y, 120 / 112, 120 / 112, 0, 0x40d0ff, pulse);
+        const k = (120 * ob.progress) / ob.need;
+        disc.add(ob.x, ob.y, k / 64, k / 64, 0, 0x40d0ff, 0.25);
+      } else if (ob.kind === 'cores') {
+        for (const c of ob.cores) {
+          disc.add(c.x, c.y, 14 / 64, 14 / 64, 0, 0x7fe0ff, pulse);
+          ring.add(c.x, c.y, 30 / 112, 30 / 112, this.time, 0x7fe0ff, pulse);
+        }
+      } else if (ob.target) {
+        const r = (ob.target.radius + 14) / 112;
+        ring.add(ob.x, ob.y, r, r, 0, 0xffd34d, pulse);
+      }
+    }
     const pr = this.stats.pickupRange / 112;
     ring.add(p.x, p.y, pr, pr, 0, 0xffffff, 0.06);
     disc.end();
@@ -2702,10 +2864,11 @@ export class Game {
   }
 
   /** Things worth walking to, for the HUD's off-screen arrows: bosses, nearby lairs and caches. */
-  pointsOfInterest(): { x: number; y: number; kind: 'boss' | 'lair' | 'cache' }[] {
+  pointsOfInterest(): { x: number; y: number; kind: 'boss' | 'lair' | 'cache' | 'objective' }[] {
     const p = this.player;
     const near = (x: number, y: number, r: number) => (x - p.x) ** 2 + (y - p.y) ** 2 < r * r;
-    const out: { x: number; y: number; kind: 'boss' | 'lair' | 'cache' }[] = [];
+    const out: { x: number; y: number; kind: 'boss' | 'lair' | 'cache' | 'objective' }[] = [];
+    if (this.objective) out.push({ x: this.objective.x, y: this.objective.y, kind: 'objective' });
     for (const b of this.bosses) out.push({ x: b.x, y: b.y, kind: 'boss' });
     for (const l of this.lairs) if (!l.cleared && near(l.x, l.y, 1800)) out.push({ x: l.x, y: l.y, kind: 'lair' });
     for (const c of this.caches) if (!c.opened && near(c.x, c.y, 1400)) out.push({ x: c.x, y: c.y, kind: 'cache' });

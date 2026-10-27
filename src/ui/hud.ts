@@ -62,6 +62,7 @@ export class Hud {
   private arrowsEl = el('div', 'poi');
   private tipStep = tipsSeen() ? TIPS.length : 0;
   private arrows: HTMLElement[] = [];
+  private objEl = el('div', 'objective');
 
   constructor(
     private game: Game,
@@ -76,7 +77,7 @@ export class Hud {
     this.shBar.append(this.shFill);
     vit.append(this.shBar, hp);
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
-    this.root.append(this.arrowsEl, xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
+    this.root.append(this.arrowsEl, xp, this.timer, this.objEl, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
     if (!touch && hasBwConsole(game.race.id)) {
       this.bw = new BwConsole(game, () => this.pauseBtn.click());
@@ -109,6 +110,11 @@ export class Hud {
     this.set('time', sec + (g.endless ? 100000 : 0), () => {
       const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
+    });
+    const obj = g.objectiveText();
+    this.set('obj', obj, () => {
+      this.objEl.textContent = obj;
+      this.objEl.style.display = obj ? '' : 'none';
     });
     const fps = Math.round(g.fps);
     if (!this.statsEls) {

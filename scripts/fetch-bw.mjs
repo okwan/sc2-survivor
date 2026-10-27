@@ -84,6 +84,8 @@ const ZONE_MAPS = {
   aiur: { era: 4, prefer: ['campaign\\protoss\\protoss10', 'campaign\\protoss\\protoss08'] },
   korhal: { era: 1, prefer: ['campaign\\terran\\terran09', 'campaign\\protoss\\protoss04'] },
   ulnar: { era: 7, fallback: 2, prefer: [] },
+  braxis: { era: 6, fallback: 2, prefer: [] },
+  shakuras: { era: 5, fallback: 0, prefer: [] },
 };
 const MINERALS = { 176: 'unit/neutral/min01.grp', 177: 'unit/neutral/min02.grp', 178: 'unit/neutral/min03.grp' };
 const GEYSER = 188;
