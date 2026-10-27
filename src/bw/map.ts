@@ -15,6 +15,8 @@ export interface BwMap {
   w: number;
   h: number;
   tiles: Uint16Array;
+  /** walkable bit per 8 px minitile ((w*4) x (h*4)), when the build had the tileset's VF4 */
+  walk: Uint8Array | null;
   images: string[];
   /** [image index, x, y] in map pixels */
   doodads: [number, number, number][];
@@ -25,15 +27,20 @@ export interface BwMap {
   starts: [number, number, number][];
 }
 
-interface MapJson extends Omit<BwMap, 'tiles'> {
+interface MapJson extends Omit<BwMap, 'tiles' | 'walk'> {
   tiles: string;
+  walk?: string;
+}
+
+function base64(s: string): Uint8Array {
+  const bin = atob(s);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
 export function parseMapJson(j: MapJson): BwMap {
-  const bin = atob(j.tiles);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return { ...j, tiles: new Uint16Array(bytes.buffer, 0, j.w * j.h) };
+  return { ...j, tiles: new Uint16Array(base64(j.tiles).buffer, 0, j.w * j.h), walk: j.walk ? base64(j.walk) : null };
 }
 
 export function mapTilesetFiles(set: string): string[] {

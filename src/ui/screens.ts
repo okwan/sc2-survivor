@@ -79,7 +79,7 @@ export function showMenu(shell: Shell) {
     <div class="controls">${
       matchMedia('(pointer: coarse)').matches
         ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
-        : 'WASD / arrows to move · spells cast automatically · F / Space / right-click to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
+        : 'Right-click or WASD to move · spells cast automatically · F / Space to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
     }</div>
     <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
   menu.append(inner);

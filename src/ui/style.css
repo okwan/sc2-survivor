@@ -29,7 +29,7 @@ html, body {
 #app canvas { display: block; position: fixed; inset: 0; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #ui > * { pointer-events: auto; }
-#ui > .hud { pointer-events: none; } /* let wheel zoom and right-click dash reach the game */
+#ui > .hud { pointer-events: none; } /* let wheel zoom and right-click moves reach the game */
 #ui .passthrough { pointer-events: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
 
