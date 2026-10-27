@@ -29,6 +29,7 @@ html, body {
 #app canvas { display: block; position: fixed; inset: 0; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #ui > * { pointer-events: auto; }
+#ui > .hud { pointer-events: none; } /* let wheel zoom and right-click dash reach the game */
 #ui .passthrough { pointer-events: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
 
@@ -346,3 +347,13 @@ html.bw-menu .menu {
 .bwcmd .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); }
 .bwcmd .rk { position: absolute; right: 2px; bottom: 0; font-size: 9px; font-weight: 800; color: var(--gold); text-shadow: 0 0 2px #000, 0 0 2px #000; }
 .bwcmd.click:hover img { filter: brightness(1.5); }
+
+/* off-screen pointers */
+.hud .poi .arrow { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; }
+.hud .poi .arrow::before { content: ''; position: absolute; inset: 0; clip-path: polygon(100% 50%, 0 0, 25% 50%, 0 100%); background: currentColor; filter: drop-shadow(0 0 3px currentColor); }
+.hud .poi .arrow.boss { color: #ff4040; width: 26px; height: 26px; left: -13px; top: -13px; }
+.hud .poi .arrow.lair { color: #ff9a3c; }
+.hud .poi .arrow.cache { color: #ffd34d; }
+.hud .stats .minerals { color: #7ad8ff; font-size: 14px; }
+.hud.lowhp::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px rgba(255, 0, 0, 0.45); animation: lowhp 1s ease-in-out infinite alternate; }
+@keyframes lowhp { from { opacity: 0.5; } to { opacity: 1; } }

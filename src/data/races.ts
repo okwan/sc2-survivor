@@ -47,7 +47,7 @@ export const RACE_DEFS: Record<RaceId, RaceDef> = {
     startSpell: 'blades',
     dashName: 'Blink',
     racial: 'Plasma Shields: 50 shields that recharge 3 sec after taking damage.',
-    desc: 'Elite and precise. Psionic blades and storms behind regenerating shields.',
+    desc: 'Elite and precise. Fights up close with psionic blades and storms behind regenerating shields.',
     stats: { maxHp: -20, maxShield: 50, shieldRegen: 12 },
   },
 };

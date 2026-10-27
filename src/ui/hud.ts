@@ -10,6 +10,25 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
   return e;
 }
 
+/** First-run hints, shown once per browser. */
+const TIPS: { at: number; text: string; touch?: string }[] = [
+  { at: 1, text: 'Move with WASD or the arrow keys. Your spells fire on their own.', touch: 'Drag anywhere to move. Your spells fire on their own.' },
+  { at: 8, text: 'Grab the blue crystals enemies drop to level up and pick upgrades.' },
+  { at: 20, text: 'Arrows on the edge point to lairs (orange, guarded gear) and supply caches (yellow, cost minerals).' },
+];
+
+function tipsSeen(set = false): boolean {
+  try {
+    if (set) localStorage.setItem('ks-tips', '1');
+    return localStorage.getItem('ks-tips') === '1';
+  } catch {
+    return set;
+  }
+}
+
+/** Frame counter only for testing: add ?fps to the address. */
+const SHOW_FPS = new URLSearchParams(location.search).has('fps');
+
 export function fmtTime(t: number): string {
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
@@ -39,8 +58,14 @@ export class Hud {
   pauseBtn = el('button', 'pausebtn', '❚❚');
   dashBtn: HTMLButtonElement | null = null;
   private bw: BwConsole | null = null;
+  private arrowsEl = el('div', 'poi');
+  private tipStep = tipsSeen() ? TIPS.length : 0;
+  private arrows: HTMLElement[] = [];
 
-  constructor(private game: Game, touch: boolean) {
+  constructor(
+    private game: Game,
+    private touch: boolean,
+  ) {
     const xp = el('div', 'xp');
     xp.append(this.xpFill, this.lvl);
     const vit = el('div', 'vitals');
@@ -50,7 +75,7 @@ export class Hud {
     this.shBar.append(this.shFill);
     vit.append(this.shBar, hp);
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
-    this.root.append(xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
+    this.root.append(this.arrowsEl, xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
     if (!touch && hasBwConsole(game.race.id)) {
       this.bw = new BwConsole(game, () => this.pauseBtn.click());
@@ -85,8 +110,8 @@ export class Hud {
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
     });
     const fps = Math.round(g.fps);
-    this.set('stats', `${p.kills}|${p.minerals}|${fps}|${g.enemyCount}`, () => {
-      this.stats.innerHTML = `☠ ${p.kills}<br><span class="mineral-ic">💎</span> ${p.minerals}<br><span class="fps">${fps} fps · ${g.enemyCount} units</span>`;
+    this.set('stats', `${p.kills}|${p.minerals}|${SHOW_FPS ? `${fps}|${g.enemyCount}` : ''}`, () => {
+      this.stats.innerHTML = `☠ ${p.kills}<br><span class="minerals">${p.minerals} minerals</span>${SHOW_FPS ? `<br><span class="fps">${fps} fps · ${g.enemyCount} units</span>` : ''}`;
     });
     const hpk = Math.max(0, p.hp / s.maxHp);
     this.set('hp', Math.round(hpk * 300), () => (this.hpFill.style.transform = `scaleX(${hpk})`));
@@ -105,7 +130,10 @@ export class Hud {
       this.dashCd.style.height = `${dk * 100}%`;
       this.dashEl.title = locked ? `${g.race.dashName} unlocks at level 5` : g.race.dashName;
       this.dashEl.style.opacity = locked ? '0.4' : '1';
-      if (this.dashBtn) this.dashBtn.style.opacity = locked ? '0.3' : dk > 0 ? '0.6' : '1';
+      if (this.dashBtn) {
+        this.dashBtn.style.opacity = locked ? '0.3' : dk > 0 ? '0.6' : '1';
+        this.dashBtn.textContent = locked ? 'LV 5' : 'DASH';
+      }
     });
     // spells
     const sig = g.spells.map((x) => `${x.def.id}${x.rank}`).join();
@@ -127,6 +155,13 @@ export class Hud {
       const k = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon' ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
       const cd = this.spellCds[i];
       if (cd) cd.style.height = `${Math.round(k * 46)}px`;
+    }
+    this.updateArrows();
+    this.root.classList.toggle('lowhp', p.hp > 0 && p.hp / s.maxHp < 0.3);
+    if (this.tipStep < TIPS.length && g.time >= TIPS[this.tipStep].at) {
+      const t = TIPS[this.tipStep++];
+      this.toast(this.touch ? t.touch ?? t.text : t.text, '#ffe9a8');
+      if (this.tipStep === TIPS.length) tipsSeen(true);
     }
     // bosses
     const seen = new Set<number>();
@@ -153,6 +188,36 @@ export class Hud {
         this.bossBars.delete(uid);
       }
     }
+  }
+
+  /** Arrows on the screen edge pointing at off-screen bosses, lairs and supply caches. */
+  private updateArrows() {
+    const g = this.game;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const pad = 28;
+    const bottom = this.bw ? H * 0.27 : 70; // keep clear of the console
+    let n = 0;
+    for (const t of g.pointsOfInterest()) {
+      const [sx, sy] = g.toScreen(t.x, t.y);
+      if (sx > 0 && sx < W && sy > 60 && sy < H - bottom) continue;
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const k = Math.min((cx - pad) / Math.abs(dx || 1), (dy > 0 ? H - bottom - pad - cy : cy - 90) / Math.abs(dy || 1));
+      let a = this.arrows[n];
+      if (!a) {
+        a = el('div', 'arrow');
+        this.arrowsEl.append(a);
+        this.arrows.push(a);
+      }
+      a.className = `arrow ${t.kind}`;
+      a.style.display = '';
+      a.style.transform = `translate(${cx + dx * k}px, ${cy + dy * k}px) rotate(${Math.atan2(dy, dx)}rad)`;
+      n++;
+    }
+    for (let i = n; i < this.arrows.length; i++) this.arrows[i].style.display = 'none';
   }
 
   toast(msg: string, color = '#dfe8f2') {

@@ -458,7 +458,9 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       g.banishesUsed++;
       g.banished.add(c.key);
       banishMode = false;
-      cards = dealCards(g, cards.length);
+      // replace only the banished card, not the whole hand
+      const fresh = dealCards(g, cards.length + 4).find((x) => !cards.some((y) => y.key === x.key));
+      cards = cards.flatMap((x) => (x === c ? (fresh ? [fresh] : []) : [x]));
       sfx('select');
       render();
       return;
@@ -613,7 +615,13 @@ export function showPause(shell: Shell, g: Game, onResume: () => void) {
   const qb = document.createElement('button');
   qb.className = 'btn danger';
   qb.textContent = 'Retreat (end run)';
+  let sure = false;
   qb.onclick = () => {
+    if (!sure) {
+      sure = true;
+      qb.textContent = 'Click again to retreat';
+      return;
+    }
     o.remove();
     g.paused = false;
     g.end(false);

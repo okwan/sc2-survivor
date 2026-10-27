@@ -15,7 +15,7 @@ export interface PassiveDef {
 export const PASSIVES: PassiveDef[] = [
   { id: 'p_hp', name: 'Reinforced Carapace', icon: '❤️', stat: 'maxHp', value: 12, maxPicks: 6 },
   { id: 'p_regen', name: 'Nano-Repair', icon: '💉', stat: 'hpRegen', value: 0.35, maxPicks: 5 },
-  { id: 'p_armor', name: 'Neosteel Plating', icon: '🧱', stat: 'armor', value: 1, maxPicks: 5 },
+  { id: 'p_armor', name: 'Hardened Plating', icon: '🧱', stat: 'armor', value: 1, maxPicks: 5 },
   { id: 'p_speed', name: 'Hydraulic Servos', icon: '👟', stat: 'moveSpeed', value: 10, maxPicks: 5 },
   { id: 'p_dmg', name: 'Overcharged Cells', icon: '💥', stat: 'damage', value: 0.06, maxPicks: 6 },
   { id: 'p_haste', name: 'Rapid Cycling', icon: '⏱️', stat: 'haste', value: 0.04, maxPicks: 6 },

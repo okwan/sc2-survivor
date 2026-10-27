@@ -162,8 +162,10 @@ export class Game {
   private nextMagnet = 75;
   private cacheCost = 25;
   private cacheMsgT = 0;
-  private endlessBossT = 0;
+  private endlessBossT = 120;
   private endlessIdx = 0;
+  /** Delayed actions on game time, so they wait while the game is paused. */
+  private timers: { at: number; fn: () => void }[] = [];
   probe: Minion | null = null;
   private frameMs = 16;
 
@@ -262,7 +264,7 @@ export class Game {
     // guardian lairs
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2 + Math.random() * 0.5;
-      const d = 900 + Math.random() * 2400;
+      const d = 1600 + Math.random() * 1900; // not right next to the start
       const x = Math.cos(a) * d;
       const y = Math.sin(a) * d;
       const spr = new Sprite(pickupTexture('lair'));
@@ -404,12 +406,17 @@ export class Game {
   }
 
   // ------------------------------------------------------------ enemies
+  /** Enemy health and damage multipliers at minute m. */
+  private enemyScale(m: number) {
+    // harder zones ramp up to their full tier over the first ~60% of the run instead of starting there
+    const ramp = Math.min(1, 0.35 + (0.65 * m) / (this.zone.minutes * 0.6));
+    const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
+    return { hp: tier * (1 + m * 0.16 + m * m * 0.012), dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) };
+  }
+
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
     if (this.enemyCount >= MAX_ENEMIES) return null;
-    const m = this.time / 60;
-    const tier = this.zone.tier * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
-    const hpScale = tier * (1 + m * 0.16 + m * m * 0.012);
-    const dmgScale = Math.pow(tier, 0.85) * (1 + m * 0.07);
+    const { hp: hpScale, dmg: dmgScale } = this.enemyScale(this.time / 60);
     let e = this.enemyPool.pop();
     const shape = opts.boss?.shape ?? def.shape;
     const color = opts.boss?.color ?? def.color;
@@ -671,21 +678,33 @@ export class Game {
       this.dropPickup('medkit', e.x, e.y + 30, 0);
       this.dropPickup('magnet', e.x, e.y - 30, 0);
       const rar = Math.min(4, rollRarity(this.stats.luck + 1) + 1) as Rarity;
-      this.dropPickup('gear', e.x + 30, e.y, 0, rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0)));
+      const loot = rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0));
       if (e.boss.final && !this.endless) {
         this.removeEnemyAt(i);
         this.victoryShown = true;
         sfx('win');
+        // hand the final boss's gear over directly so extracting can't leave it on the ground
+        this.hooks.gear(loot);
         this.hooks.victory();
         return;
       }
+      this.dropPickup('gear', e.x + 30, e.y, 0, loot);
     }
     this.removeEnemyAt(i);
   }
 
   private wake(e: Enemy) {
     e.asleep = false;
-    if (e.lair) this.hooks.toast(`${e.def.name} guardian awakens!`, '#ff8040');
+    if (e.lair && !e.boss) {
+      // guardians were placed at the start of the run: bring them up to the current strength
+      const a = this.enemyScale(0);
+      const b = this.enemyScale(this.time / 60);
+      const k = b.hp / a.hp;
+      e.hp *= k;
+      e.maxHp *= k;
+      e.damage *= b.dmg / a.dmg;
+    }
+    if (e.lair) this.hooks.toast(`${e.def.name} guardian awakens! Kill it for gear, or outrun it.`, '#ff8040');
   }
 
   private banelingBlast(e: Enemy) {
@@ -757,6 +776,7 @@ export class Game {
 
   end(won: boolean) {
     if (this.over) return;
+    won ||= this.victoryShown; // dying in endless still counts the zone as cleared
     this.over = true;
     sfx(won ? 'win' : 'lose');
     this.hooks.ended({
@@ -778,14 +798,15 @@ export class Game {
     let dx: number;
     let dy: number;
     const [mx, my] = this.input.move();
-    if (this.input.hasMouse && !this.input.isTouch) {
+    // dash where you're moving; aim with the mouse only when standing still
+    if (mx || my) {
+      dx = mx;
+      dy = my;
+    } else if (this.input.hasMouse && !this.input.isTouch) {
       const sx = this.app.screen.width / 2;
       const sy = this.app.screen.height / 2;
       dx = this.input.mouseX - sx;
       dy = this.input.mouseY - sy;
-    } else if (mx || my) {
-      dx = mx;
-      dy = my;
     } else {
       dx = Math.cos(p.facing);
       dy = Math.sin(p.facing);
@@ -987,6 +1008,21 @@ export class Game {
     const p = this.player;
     const a = Math.random() * Math.PI * 2;
     const base = ENEMIES[def.summon ?? 'zergling'] ?? ENEMIES.zergling;
+    if (this.enemyCount >= MAX_ENEMIES) {
+      // make room so a full map can't swallow a boss: drop the farthest ordinary enemy
+      let far = -1;
+      let fd = -1;
+      for (let i = 0; i < this.enemyCount; i++) {
+        const o = this.enemies[i];
+        if (o.boss || o.lair) continue;
+        const d = (o.x - p.x) ** 2 + (o.y - p.y) ** 2;
+        if (d > fd) {
+          fd = d;
+          far = i;
+        }
+      }
+      if (far >= 0) this.removeEnemyAt(far);
+    }
     const e = this.spawnEnemy(base, p.x + Math.cos(a) * 600, p.y + Math.sin(a) * 600, { boss: def, final });
     if (!e) return;
     sfx('boss');
@@ -1034,11 +1070,14 @@ export class Game {
         const base = Math.atan2(dy, dx);
         const volleys = b.enraged ? 4 : 3;
         for (let v = 0; v < volleys; v++) {
-          setTimeout(() => {
-            if (e.hp <= 0 || this.over) return;
-            const a0 = Math.atan2(this.player.y - e.y, this.player.x - e.x);
-            for (let i = -2; i <= 2; i++) this.enemyShot(e.x, e.y, a0 + i * 0.16, 330, bulletDmg, 7);
-          }, v * 260);
+          this.timers.push({
+            at: this.time + v * 0.26,
+            fn: () => {
+              if (e.hp <= 0 || !e.boss) return;
+              const a0 = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+              for (let i = -2; i <= 2; i++) this.enemyShot(e.x, e.y, a0 + i * 0.16, 330, bulletDmg, 7);
+            },
+          });
         }
         void base;
         break;
@@ -1094,6 +1133,13 @@ export class Game {
     }
     const dt = Math.min(dtMs / 1000, 1 / 20);
     this.time += dt;
+    if (this.timers.length) {
+      const due = this.timers.filter((t) => t.at <= this.time);
+      if (due.length) {
+        this.timers = this.timers.filter((t) => t.at > this.time);
+        for (const t of due) t.fn();
+      }
+    }
     const p = this.player;
     const s = this.stats;
 
@@ -1216,7 +1262,11 @@ export class Game {
       p.xp -= this.xpNeeded;
       p.level++;
       this.pendingLevels++;
-      if (p.level === DASH_UNLOCK) this.hooks.toast(`${this.race.dashName} unlocked! Press F / Space to dash.`, '#7ad8ff');
+      if (p.level === DASH_UNLOCK) {
+        // shown once the level-up screen closes, so it isn't hidden behind it
+        const msg = `${this.race.dashName} unlocked! ${this.input.isTouch ? 'Tap DASH' : 'Press F / Space'} to dash.`;
+        this.timers.push({ at: this.time + 0.3, fn: () => this.hooks.toast(msg, '#7ad8ff') });
+      }
     }
     if (this.pendingLevels > 0) {
       sfx('level');
@@ -1412,8 +1462,8 @@ export class Game {
             if (e.windup <= 0) e.charge = 0.6;
           } else if (e.charge > 0) {
             e.charge -= dt;
-            e.x += e.cdx * spd * 3 * dt;
-            e.y += e.cdy * spd * 3 * dt;
+            e.x += e.cdx * spd * 2.4 * dt;
+            e.y += e.cdy * spd * 2.4 * dt;
           } else {
             e.x += (dx / d) * spd * dt;
             e.y += (dy / d) * spd * dt;
@@ -1423,7 +1473,7 @@ export class Game {
               e.windup = 0.55;
               e.cdx = dx / d;
               e.cdy = dy / d;
-              this.telegraphs.push({ kind: 'line', x: e.x, y: e.y, r: e.radius * 0.8, dx: e.cdx, dy: e.cdy, len: spd * 3 * 0.6 + e.radius, t: 0, max: 0.55, damage: 0, onDone: null, friendly: false });
+              this.telegraphs.push({ kind: 'line', x: e.x, y: e.y, r: e.radius * 0.8, dx: e.cdx, dy: e.cdy, len: spd * 2.4 * 0.6 + e.radius, t: 0, max: 0.55, damage: 0, onDone: null, friendly: false });
             }
           }
         } else {
@@ -1445,7 +1495,7 @@ export class Game {
       const cr = e.radius + 14;
       if (d < cr && e.contactCd <= 0) {
         e.contactCd = 0.6;
-        this.damagePlayer(e.damage);
+        this.damagePlayer(e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage);
       }
       this.grid.insert(i, e.x, e.y);
     }
@@ -1731,7 +1781,7 @@ export class Game {
         this.paused = true;
       } else if (this.cacheMsgT <= 0) {
         this.cacheMsgT = 1.5;
-        this.hooks.toast(`Supply cache needs ${this.cacheCost} minerals`, '#7ad8ff');
+        this.hooks.toast(`Supply cache needs ${this.cacheCost} minerals (enemies sometimes drop them)`, '#7ad8ff');
       }
     }
   }
@@ -1897,7 +1947,22 @@ export class Game {
     g.circle(p.x, p.y, this.stats.pickupRange).stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
   }
 
-  /** Off-screen boss / guardian indicator data for the HUD. */
+  /** Things worth walking to, for the HUD's off-screen arrows: bosses, nearby lairs and caches. */
+  pointsOfInterest(): { x: number; y: number; kind: 'boss' | 'lair' | 'cache' }[] {
+    const p = this.player;
+    const near = (x: number, y: number, r: number) => (x - p.x) ** 2 + (y - p.y) ** 2 < r * r;
+    const out: { x: number; y: number; kind: 'boss' | 'lair' | 'cache' }[] = [];
+    for (const b of this.bosses) out.push({ x: b.x, y: b.y, kind: 'boss' });
+    for (const l of this.lairs) if (!l.cleared && near(l.x, l.y, 1800)) out.push({ x: l.x, y: l.y, kind: 'lair' });
+    for (const c of this.caches) if (!c.opened && near(c.x, c.y, 1400)) out.push({ x: c.x, y: c.y, kind: 'cache' });
+    return out;
+  }
+
+  /** World position to screen pixels. */
+  toScreen(x: number, y: number): [number, number] {
+    return [(x - this.camX) * this.zoom + this.app.screen.width / 2, (y - this.camY) * this.zoom + this.app.screen.height / 2];
+  }
+
   get fps() {
     return 1000 / this.frameMs;
   }
