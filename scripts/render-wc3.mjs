@@ -184,7 +184,7 @@ export async function renderModels(jobs, outDir, options = {}) {
   const { chromium } = await import('playwright-core');
   const browser = await chromium.launch({ executablePath: chromePath(), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage();
-  page.on('console', (m) => m.type() !== 'log' && console.warn(`render-wc3 [page] ${m.text()}`));
+  page.on('console', (m) => m.type() !== 'log' && !/GPU stall/.test(m.text()) && console.warn(`render-wc3 [page] ${m.text()}`));
   await page.setContent('<!doctype html><html><body></body></html>');
   await page.addScriptTag({ content: readFileSync(join(dirname(require.resolve('war3-model')), 'war3-model.browser.js'), 'utf8') });
   mkdirSync(outDir, { recursive: true });
@@ -193,7 +193,7 @@ export async function renderModels(jobs, outDir, options = {}) {
     try {
       const t0 = Date.now();
       const textures = Object.fromEntries(Object.entries(job.textures).map(([p, d]) => [p, Buffer.from(d).toString('base64')]));
-      const { sequences, out } = await page.evaluate(renderInPage, { mdx: Buffer.from(job.mdx).toString('base64'), textures, opts });
+      const { sequences, out } = await page.evaluate(renderInPage, { mdx: Buffer.from(job.mdx).toString('base64'), textures, opts: { ...opts, teamColor: job.teamColor ?? opts.teamColor } });
       const anims = {};
       for (const [anim, a] of Object.entries(out)) {
         writeFileSync(join(outDir, `${job.id}-${anim}.png`), Buffer.from(a.png.split(',')[1], 'base64'));

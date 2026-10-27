@@ -158,6 +158,9 @@ async function fillCache() {
 
 const slash = (p) => p.replace(/\\/g, '/');
 
+// WC3 lights team color areas (capes, banners) but the renderer draws them flat, so use deep shades
+const TEAM_COLORS = { Human: [0.08, 0.22, 0.62], Undead: [0.32, 0.1, 0.48], Orc: [0.62, 0.1, 0.06], NightElf: [0.06, 0.4, 0.34] };
+
 function texturesOf(W, mdx) {
   try {
     const m = W.parseMDX(new Uint8Array(mdx).slice().buffer);
@@ -222,7 +225,7 @@ async function main() {
     for (const t of texturesOf(W, mdx)) if (existsSync(cached(slash(t)))) textures[t] = readFileSync(cached(slash(t)));
     const lacking = texturesOf(W, mdx).filter((t) => !textures[t]);
     if (lacking.length) console.warn(`fetch-wc3: ${id} has no ${lacking.join(', ')}`);
-    jobs.push({ id, mdx, textures });
+    jobs.push({ id, mdx, textures, teamColor: TEAM_COLORS[h.model.split('/')[1]] });
   }
   let sprites = {};
   if (jobs.length) {
