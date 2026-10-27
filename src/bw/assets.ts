@@ -3,6 +3,7 @@ import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
 import { BW_TERRAIN_FILES, terrainFilesFor, terrainTexture } from './terrain';
 import { BW_UI_FILES } from './ui-files';
+import { BW_SOUND_FILES } from './sounds';
 import { MapGround, mapTilesetFiles, parseMapJson, type BwMap } from './map';
 import { normalizePath, readZip } from './zip';
 
@@ -41,6 +42,14 @@ export const BW_UNITS: Record<string, string> = {
   'prop:min2': 'unit/neutral/min02.grp',
   'prop:min3': 'unit/neutral/min03.grp',
   'prop:geyser': 'unit/neutral/geyser.grp',
+  'pickup:xp': 'unit/neutral/khchunk.grp',
+  'pickup:mineral': 'unit/neutral/orechunk.grp',
+  'pickup:medkit': 'unit/neutral/gasorb.grp',
+  'pickup:magnet': 'unit/neutral/psiemit.grp',
+  'pickup:gear': 'unit/neutral/datadisk.grp',
+  'pickup:cache': 'unit/terran/depot.grp',
+  'pickup:lair': 'unit/zerg/lair.grp',
+  'pickup:bomb': 'unit/bullet/grenade.grp',
 };
 
 /** Effects (all animation frames are kept). */
@@ -131,7 +140,7 @@ let anims: Record<string, { walk?: [number, number][] }> = {};
 const registry = new Map<string, BwSprite>();
 /** Every Brood War file currently available (player's own or bundled with the site). */
 let store = new Map<string, Uint8Array>();
-const LAZY = /\.(cv5|vx4|vr4)$|^maps\/|^unit\/thingy\/tileset\//; // tilesets, maps and their doodads: fetched per zone when a run starts
+const LAZY = /\.(cv5|vx4|vr4)$|^maps\/|^unit\/thingy\/tileset\/|^sound\//; // tilesets, maps and their doodads: fetched per zone when a run starts
 type BwSource = 'local' | 'bundled' | null;
 let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
@@ -192,7 +201,7 @@ export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number
 
 // ------------------------------------------------------------ file intake
 const DOODAD_FILES = () => Object.values(BW_DOODADS).flatMap((l) => l.flatMap(([a, b]) => (b ? [a, b] : [a])));
-const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES, ...BW_UI_FILES];
+const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES, ...BW_UI_FILES, ...BW_SOUND_FILES];
 
 function wanted(path: string): string | null {
   for (const p of ALL_FILES()) if (path.endsWith(p)) return p;
@@ -310,7 +319,7 @@ export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 
       continue;
     }
     try {
-      const team = key.startsWith('hero:') || key.startsWith('minion:') ? 'blue' : 'red';
+      const team = key.startsWith('hero:') || key.startsWith('minion:') || key === 'pickup:cache' ? 'blue' : 'red';
       registry.set(key, buildUnit(path, buf, pals[team]));
     } catch {
       missing.push(path);
@@ -455,7 +464,8 @@ async function loadBundled() {
   }
 }
 
-async function fetchInto(paths: string[]) {
+/** Fetches bundled files that aren't loaded yet (missing ones are skipped). */
+export async function fetchInto(paths: string[]) {
   await Promise.all(
     paths.filter((p) => !store.has(p) && bundledPaths.has(p)).map(async (p) => {
       try {

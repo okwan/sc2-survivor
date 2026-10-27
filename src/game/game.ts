@@ -9,7 +9,7 @@ import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupText
 import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, walkFrame, type BwSprite } from '../bw/assets';
 import { mapStart, type MapGround } from '../bw/map';
 import { MapWalk } from '../bw/walk';
-import { sfx } from './audio';
+import { deathSfx, setSfxRace, sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
 import { MAX_SLOTS } from './entities';
@@ -198,6 +198,7 @@ export class Game {
     this.hooks = hooks;
     this.zone = zone;
     this.race = RACE_DEFS[raceId];
+    setSfxRace(raceId);
     const tb = talentBonuses(raceId);
     this.flags = tb.flags;
     this.talentMods = tb.stats;
@@ -347,7 +348,7 @@ export class Game {
     for (let i = 0; i < 7; i++) {
       const [x, y] = this.randomPoint(far, lairAt, 700);
       lairAt.push([x, y]);
-      const spr = new Sprite(pickupTexture('lair'));
+      const spr = new Sprite(this.pickupTex('lair'));
       spr.anchor.set(0.5);
       spr.position.set(x, y);
       this.layers.ground.addChild(spr);
@@ -367,7 +368,7 @@ export class Game {
     for (let i = 0; i < 14; i++) {
       const [x, y] = this.randomPoint(450, cacheAt, 400);
       cacheAt.push([x, y]);
-      const spr = new Sprite(pickupTexture('cache'));
+      const spr = new Sprite(this.pickupTex('cache'));
       spr.anchor.set(0.5);
       spr.position.set(x, y);
       this.layers.pickups.addChild(spr);
@@ -1010,8 +1011,8 @@ export class Game {
   }
 
   addLob(x0: number, y0: number, x1: number, y1: number, dur: number, damage: number, r: number, slot: number, color: number, tags: readonly string[]) {
-    const spr = this.sprite(this.layers.top, pickupTexture('bomb'));
-    spr.tint = color;
+    const spr = this.sprite(this.layers.top, this.pickupTex('bomb'));
+    spr.tint = bwSprite('pickup:bomb') ? 0xffffff : color;
     this.lobs.push({ x0, y0, x1, y1, t: 0, dur, damage, r, slot, color, sprite: spr, tags: tags as string[] });
   }
 
@@ -1051,6 +1052,7 @@ export class Game {
 
   private bwDeath(e: Enemy, big: boolean): boolean {
     const sh = e.def.shape;
+    deathSfx(e.boss?.def.shape ?? sh);
     const s = Math.max(0.8, (e.radius * (e.boss ? 1.2 : 1)) / 14);
     if (sh === 'zealot' || sh === 'stalker' || sh === 'archon' || sh === 'hybrid') return this.addAnim('fx:pdeath', e.x, e.y, s * 0.7, 0.55);
     if (sh === 'marine' || sh === 'firebat' || sh === 'tank') return this.addAnim(big ? 'fx:tbangl' : 'fx:tbangs', e.x, e.y, s * 0.6, 0.6);
@@ -1081,7 +1083,8 @@ export class Game {
       return;
     }
     const tier = value >= 10 ? 2 : value >= 3 ? 1 : 0;
-    const spr = this.sprite(this.layers.pickups, pickupTexture(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0'));
+    const spr = this.sprite(this.layers.pickups, this.pickupTex(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0'));
+    this.styleGem(spr, tier);
     spr.position.set(x, y);
     this.gems.push({ x, y, value, tier, sprite: spr, pulled: false, speed: 0 });
   }
@@ -1090,15 +1093,32 @@ export class Game {
     const tier = g.value >= 10 ? 2 : g.value >= 3 ? 1 : 0;
     if (tier !== g.tier) {
       g.tier = tier;
-      g.sprite.texture = pickupTexture(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0');
+      g.sprite.texture = this.pickupTex(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0');
+      this.styleGem(g.sprite, tier);
     }
   }
 
+  /** Khaydarin crystal chunks for XP: bigger and recoloured for richer tiers. */
+  private styleGem(spr: Sprite, tier: number) {
+    if (!bwSprite('pickup:xp')) return;
+    spr.scale.set([0.55, 0.75, 1][tier]);
+    spr.tint = [0xffffff, 0xa0ffa8, 0xff9a9a][tier];
+  }
+
+  /** A pickup or landmark: its Brood War sprite (crystal chunks, ore, gas orb, psi emitter, data disk, depot, lair) or the placeholder. */
+  private pickupTex(kind: 'xp0' | 'xp1' | 'xp2' | 'mineral' | 'medkit' | 'magnet' | 'cache' | 'lair' | 'bomb' | 'gear'): Texture {
+    const key = kind.startsWith('xp') ? 'pickup:xp' : `pickup:${kind}`;
+    const bw = bwSprite(key);
+    if (bw) return bw.frames[0];
+    return pickupTexture(kind === 'gear' ? 'cache' : kind);
+  }
+
   dropPickup(kind: PickupKind, x: number, y: number, value: number, data?: unknown) {
-    const tex = pickupTexture(kind === 'gear' ? 'cache' : kind);
-    const spr = this.sprite(this.layers.pickups, tex);
+    const spr = this.sprite(this.layers.pickups, this.pickupTex(kind));
     spr.position.set(x, y);
-    if (kind === 'gear') {
+    spr.scale.set(1);
+    spr.tint = 0xffffff;
+    if (kind === 'gear' && !bwSprite('pickup:gear')) {
       spr.scale.set(0.8);
       spr.tint = 0xffd34d;
     }
