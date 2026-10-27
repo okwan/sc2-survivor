@@ -117,6 +117,27 @@ function inventory(archives, order) {
     const d = read(c);
     console.log(`inventory: ${c} ${d ? d.length : 'MISSING'}`);
   }
+  // copy candidates for scripts/bw-preview.ts (CI only; never deployed)
+  const images = tbl('arr\\images.tbl');
+  const doodads = images.filter((p) => /^thingy\\tileset\\(badlands|ashworld|jungle|platform|twilight)\\/i.test(p));
+  const fx = images.filter((p) => /^(bullet|thingy)\\[^\\]+\.grp$/i.test(p));
+  const neutral = images.filter((p) => /^neutral\\(min0\d|orechunk|khchunk|gasorb|geyser|kerrchry|psiemit|datadisk|flag)\.grp$/i.test(p));
+  const dump = [
+    ...sets.flatMap((t) => ['cv5', 'vx4', 'vr4', 'wpe'].map((x) => `tileset\\${t}.${x}`)),
+    ...[...doodads, ...fx, ...neutral].map((p) => 'unit\\' + p),
+    ...cands.filter((c) => /^(game|unit\\cmdbtns|unit\\wirefram|cursor|font|glue)\\/i.test(c)),
+  ];
+  let n = 0;
+  for (const c of dump) {
+    const d = read(c);
+    if (!d) continue;
+    const dest = join('bwprev', c.replace(/\\/g, '/').toLowerCase());
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, d);
+    n++;
+  }
+  writeFileSync('bwprev/index.json', JSON.stringify({ doodads, fx, neutral }));
+  console.log(`inventory: copied ${n} files to bwprev/`);
 }
 
 async function main() {

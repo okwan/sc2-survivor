@@ -32,6 +32,9 @@ jobs:
           BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
           BW_INVENTORY: ${{ github.ref != 'refs/heads/main' && '1' || '' }}
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
+      # branch builds: contact sheets of the Brood War data, printed into the log for review
+      - if: github.ref != 'refs/heads/main'
+        run: node --experimental-strip-types scripts/bw-preview.ts bwprev || true
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
