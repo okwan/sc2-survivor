@@ -31,7 +31,7 @@ function findMpqs(dir) {
     for (const name of readdirSync(d)) {
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p);
-      else if (/^(stardat|broodat|patch_rt)\.mpq$/i.test(name)) out[name.toLowerCase()] = p;
+      else if (/^(stardat|broodat|patch_rt|broodwar)\.mpq$/i.test(name)) out[name.toLowerCase()] = p;
     }
   };
   walk(dir);
@@ -151,6 +151,16 @@ function inventory(archives, order, src) {
     }
   }
   console.log('inventory: campaign ' + camp.join(' | '));
+  const music = [];
+  for (const n of ['title', 'terran1', 'terran2', 'terran3', 'zerg1', 'zerg2', 'zerg3', 'protoss1', 'protoss2', 'protoss3', 'tdefeat', 'zdefeat', 'pdefeat', 'tvictory', 'zvictory', 'pvictory', 'trdyroom', 'zrdyroom', 'prdyroom'])
+    for (const dir of ['music', 'sound\\music', 'glue\\music']) {
+      const c = `${dir}\\${n}.wav`;
+      const d = read(c);
+      if (d) music.push(`${c} ${d.length}`);
+    }
+  console.log('inventory: music ' + music.join(' | '));
+  const bwm = archives[order.indexOf('broodwar.mpq')];
+  if (bwm) for (const c of ['(listfile)', 'rez\\stat_txt.tbl', 'music\\title.wav', 'smk\\blizzard.smk']) console.log(`inventory: broodwar.mpq ${c} ${bwm.hasFile(c)}`);
   for (const c of cands) {
     const d = read(c);
     console.log(`inventory: ${c} ${d ? d.length : 'MISSING'}`);
@@ -186,7 +196,7 @@ async function main() {
   FS.mkdir('/bw');
   FS.mount(FS.filesystems.NODEFS, { root: '/' }, '/bw');
   // later archives override earlier ones, like the game itself
-  const order = ['patch_rt.mpq', 'broodat.mpq', 'stardat.mpq'].filter((n) => mpqs[n]);
+  const order = ['patch_rt.mpq', 'broodat.mpq', 'stardat.mpq', 'broodwar.mpq'].filter((n) => mpqs[n]);
   const archives = [];
   for (const n of order) archives.push(await MPQ.open('/bw' + mpqs[n], 'r'));
   const got = [];
