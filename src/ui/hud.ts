@@ -1,7 +1,9 @@
-import { bwTerrain } from '../bw/assets';
 import { CONSOLE_H, consoleUrl, hasBwConsole, iconUrl, spellIcon, wireframeUrl, type BwTint } from '../bw/ui';
 import { PAUSE_ICON, RACE_UI, SPELL_ICONS } from '../bw/ui-files';
 import { VICTORY_SECS, type Game } from '../game/game';
+import { Radar } from './radar';
+import { hasWowHud, WowHud } from './wowhud';
+import { hasWow } from '../wow/ui';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -60,6 +62,7 @@ export class Hud {
   pauseBtn = el('button', 'pausebtn', '❚❚');
   dashBtn: HTMLButtonElement | null = null;
   private bw: BwConsole | null = null;
+  private wow: WowHud | null = null;
   private arrowsEl = el('div', 'poi');
   private tipStep = tipsSeen() ? TIPS.length : 0;
   private arrows: HTMLElement[] = [];
@@ -80,7 +83,11 @@ export class Hud {
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
     this.root.append(this.arrowsEl, xp, this.timer, this.objEl, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.raidEl, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
-    if (!touch && hasBwConsole(game.race.id)) {
+    if (!touch && hasWow() && hasWowHud()) {
+      this.wow = new WowHud(game, () => this.pauseBtn.click());
+      this.root.append(this.wow.root);
+      this.root.classList.add('wowmode');
+    } else if (!touch && hasBwConsole(game.race.id)) {
       this.bw = new BwConsole(game, () => this.pauseBtn.click());
       this.root.append(this.bw.root);
       this.root.classList.add('bwmode');
@@ -100,6 +107,7 @@ export class Hud {
 
   update() {
     this.bw?.update();
+    this.wow?.update();
     const g = this.game;
     const p = g.player;
     const s = g.stats;
@@ -224,7 +232,7 @@ export class Hud {
     const W = window.innerWidth;
     const H = window.innerHeight;
     const pad = 28;
-    const bottom = this.bw ? H * 0.27 : 70; // keep clear of the console
+    const bottom = this.wow ? this.wow.bottomPx : this.bw ? H * 0.27 : 70; // keep clear of the console
     let n = 0;
     for (const t of g.pointsOfInterest()) {
       const [sx, sy] = g.toScreen(t.x, t.y);
@@ -278,6 +286,7 @@ export class Hud {
 
   destroy() {
     this.bw?.destroy();
+    this.wow?.destroy();
     this.root.remove();
   }
 }
@@ -286,7 +295,6 @@ export class Hud {
 const CARD_X = [505, 551, 597];
 const CARD_Y = [68, 110, 152];
 const MM = 128;
-const RADAR = 4800; // world pixels across the minimap
 
 /**
  * The Brood War console along the bottom of the screen: minimap, status panel, hero wireframe
@@ -295,9 +303,7 @@ const RADAR = 4800; // world pixels across the minimap
  */
 class BwConsole {
   root = el('div', 'bwconsole');
-  private mm = document.createElement('canvas');
-  private mmCtx: CanvasRenderingContext2D;
-  private mmBg: { img: CanvasImageSource; w: number; h: number; dim: number } | null | undefined = undefined;
+  private radar: Radar;
   private status = el('div', 'bwstatus');
   private wire = el('img', 'bwwire');
   private cells: { root: HTMLDivElement; img: HTMLImageElement; cd: HTMLElement; rk: HTMLElement; key: string }[] = [];
@@ -309,12 +315,11 @@ class BwConsole {
   constructor(private game: Game, pause: () => void) {
     this.root.style.backgroundImage = `url(${consoleUrl(game.race.id)})`;
     this.root.style.height = `${CONSOLE_H}px`;
-    this.mm.width = this.mm.height = MM;
-    this.mm.className = 'bwmm';
-    this.mmCtx = this.mm.getContext('2d')!;
+    this.radar = new Radar(game, MM);
+    this.radar.canvas.className = 'bwmm';
     const portrait = el('div', 'bwportrait');
     portrait.append(this.wire);
-    this.root.append(this.mm, this.status, portrait);
+    this.root.append(this.radar.canvas, this.status, portrait);
     for (let i = 0; i < 9; i++) {
       const root = el('div', 'bwcmd');
       root.style.left = `${CARD_X[i % 3]}px`;
@@ -425,82 +430,7 @@ ${hasShield ? '<div class="bar sh"><i></i></div><div class="v sh"></div>' : ''}
     this.set('xpw', Math.round(xpk * 200), () => (st.xp.style.width = `${xpk * 100}%`));
     this.set('kills', p.kills, () => (st.kills.textContent = `Kills ${p.kills}`));
     this.set('min', p.minerals, () => (st.min.textContent = `Minerals ${p.minerals}`));
-    if (this.frame++ % 4 === 0) this.drawMinimap();
-  }
-
-  /** Minimap pixels per world pixel: the world has no edge, so the minimap is a radar around the camera. */
-  private mmScale() {
-    return MM / RADAR;
-  }
-
-  private mmX(x: number) {
-    return (x - this.game.camX) * this.mmScale() + MM / 2;
-  }
-
-  private mmY(y: number) {
-    return (y - this.game.camY) * this.mmScale() + MM / 2;
-  }
-
-  /** The ground's minimap image and the world size it repeats over. */
-  private minimapSource(): { img: CanvasImageSource; w: number; h: number; dim: number } | null {
-    if (this.mmBg !== undefined) return this.mmBg;
-    const g = this.game;
-    const mg = g.mapGround;
-    const tex = mg ? null : bwTerrain(g.zone.id);
-    const src = tex?.source.resource as CanvasImageSource | undefined;
-    // the real map, one pixel per tile like the console's; otherwise the zone's ground pattern, darkened
-    this.mmBg = mg ? { img: mg.minimap(), w: g.periodW, h: g.periodH, dim: 0 } : src && tex ? { img: src, w: tex.width, h: tex.height, dim: 0.25 } : null;
-    return this.mmBg;
-  }
-
-  private drawBackground(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, MM, MM);
-    const bg = this.minimapSource();
-    if (!bg) return;
-    const k = this.mmScale();
-    const sw = bg.w * k;
-    const sh = bg.h * k;
-    const g = this.game;
-    const mx = g.mapGround ? -g.mapOx : 0;
-    const my = g.mapGround ? -g.mapOy : 0;
-    const x0 = this.mmX(mx) - Math.ceil(this.mmX(mx) / sw) * sw;
-    const y0 = this.mmY(my) - Math.ceil(this.mmY(my) / sh) * sh;
-    ctx.imageSmoothingEnabled = !g.mapGround;
-    for (let y = y0; y < MM; y += sh) for (let x = x0; x < MM; x += sw) ctx.drawImage(bg.img, Math.round(x), Math.round(y), Math.ceil(sw), Math.ceil(sh));
-    if (bg.dim) {
-      ctx.fillStyle = `rgba(0,0,0,${bg.dim})`;
-      ctx.fillRect(0, 0, MM, MM);
-    }
-  }
-
-  private drawMinimap() {
-    const g = this.game;
-    const ctx = this.mmCtx;
-    const k = this.mmScale();
-    const mx = (x: number) => this.mmX(x);
-    const my = (y: number) => this.mmY(y);
-    this.drawBackground(ctx);
-    ctx.fillStyle = '#ffd34d';
-    for (const c of g.caches) if (!c.opened) ctx.fillRect(mx(c.x) - 1, my(c.y) - 1, 3, 3);
-    ctx.fillStyle = '#ff9a3c';
-    for (const l of g.lairs) if (!l.cleared) ctx.fillRect(mx(l.x) - 2, my(l.y) - 2, 4, 4);
-    ctx.fillStyle = '#e02020';
-    for (let i = 0; i < g.enemyCount; i++) {
-      const e = g.enemies[i];
-      ctx.fillRect(mx(e.x), my(e.y), 1.5, 1.5);
-    }
-    ctx.fillStyle = '#ff40ff';
-    for (const b of g.bosses) ctx.fillRect(mx(b.x) - 2.5, my(b.y) - 2.5, 5, 5);
-    const p = g.player;
-    ctx.fillStyle = '#4fff6a';
-    ctx.fillRect(mx(p.x) - 1.5, my(p.y) - 1.5, 3, 3);
-    // the camera's view, like the white box on the real minimap
-    const hw = (window.innerWidth / 2 / g.zoom) * k;
-    const hh = (window.innerHeight / 2 / g.zoom) * k;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(mx(g.camX) - hw) + 0.5, Math.round(my(g.camY) - hh) + 0.5, Math.round(hw * 2), Math.round(hh * 2));
+    if (this.frame++ % 4 === 0) this.radar.draw();
   }
 
   destroy() {

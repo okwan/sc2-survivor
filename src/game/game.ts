@@ -22,8 +22,7 @@ import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import { damp, hyp } from './math';
 import type { Input } from './input';
-import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
-import { RACE_UI } from '../bw/ui-files';
+import { bwIcon, dashIcon, spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 import { wc3AnimLength, wc3Frame, wc3Hero, type Wc3Sprite } from '../wc3/sprites';
 
@@ -1097,7 +1096,7 @@ export class Game {
           [6, 'Immolation burn', bwIcon('napalm', '🔥')],
           [SLOT_NUKE, 'Avatar', bwIcon('nuke', '☢️')],
           [SLOT_FEEDBACK, 'Ancestral Wrath', bwIcon('feedback', '💫')],
-          [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
+          [SLOT_DASH, this.race.dashName, dashIcon(this.race.id)],
           [SLOT_RACIAL, 'Flame Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
