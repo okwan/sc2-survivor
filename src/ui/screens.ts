@@ -595,7 +595,9 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
   // free rerolls don't raise the price of the paid ones
   const rerollCost = () => 15 + Math.max(0, g.rerollsUsed - g.stats.rerolls) * 10;
 
+  let picking = false;
   const pick = (c: Card) => {
+    if (picking) return;
     if (banishMode) {
       if (g.banishesUsed >= g.stats.banishes || c.kind === 'fallback') return;
       g.banishesUsed++;
@@ -608,13 +610,23 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       render();
       return;
     }
-    applyCard(g, c);
     sfx('select');
-    o.remove();
-    hideTip();
-    g.pendingLevels--;
-    if (g.pendingLevels > 0) showLevelUp(shell, g, onDone);
-    else onDone();
+    // the chosen card bursts for 0.28 s, then the choice applies
+    picking = true;
+    const row = o.querySelector('.cards');
+    const i = cards.indexOf(c);
+    row?.classList.add('picking');
+    row?.children[i]?.classList.add('picked');
+    const done = () => {
+      applyCard(g, c);
+      o.remove();
+      hideTip();
+      g.pendingLevels--;
+      if (g.pendingLevels > 0) showLevelUp(shell, g, onDone);
+      else onDone();
+    };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+    else setTimeout(done, 280);
   };
   const autoPick = () => {
     const order = { evolution: 5, upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
@@ -656,8 +668,20 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       const b = document.createElement('button');
       b.className = 'card' + (c.rarity >= 3 ? ` r${c.rarity}` : '');
       b.style.setProperty('--rc', RARITY_COLORS[c.rarity]);
-      b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.rarity]}</div><div class="ic">${v.icon}</div><div class="nm">${v.title}</div><div class="ty">${v.type}</div><ul>${v.lines.map((l) => `<li>${l}</li>`).join('')}</ul><div class="ds">${v.desc}</div>`;
+      b.style.setProperty('--i', String(i));
+      const pips = v.ranks ? `<div class="pips">${Array.from({ length: v.ranks[1] }, (_, r) => `<i class="${r < v.ranks![0] ? 'have' : r === v.ranks![0] ? 'next' : ''}"></i>`).join('')}</div>` : '';
+      b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.rarity]}</div><div class="ic">${v.icon}</div><div class="nm">${v.title}</div><div class="ty">${v.type}</div>${pips}<ul>${v.lines.map((l) => `<li>${l}</li>`).join('')}</ul><div class="ds">${v.desc}</div>`;
       b.onclick = () => pick(c);
+      // the hovered card leans toward the cursor
+      b.onpointermove = (ev) => {
+        const r = b.getBoundingClientRect();
+        b.style.setProperty('--tx', ((ev.clientX - r.left) / r.width - 0.5).toFixed(3));
+        b.style.setProperty('--ty', ((ev.clientY - r.top) / r.height - 0.5).toFixed(3));
+      };
+      b.onpointerleave = () => {
+        b.style.removeProperty('--tx');
+        b.style.removeProperty('--ty');
+      };
       row.append(b);
     });
     box.append(row);
