@@ -36,6 +36,11 @@ export function wc3IconUrl(blpPath: string | undefined): string | null {
   return manifest.files.includes(name) ? `wc3/${name}` : null;
 }
 
+/** URL of a WC3 sound (path as in src/wc3/sounds.ts) if the site ships it. */
+export function wc3SoundUrl(path: string): string | null {
+  return manifest?.files.includes(`sound/${path}`) ? `wc3/sound/${path}` : null;
+}
+
 export function wc3HeroIconUrl(art: string | undefined): string | null {
   return art ? wc3IconUrl(WC3_HEROES[art]?.icon) : null;
 }
