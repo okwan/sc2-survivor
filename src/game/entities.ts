@@ -1,4 +1,4 @@
-import type { Sprite } from 'pixi.js';
+import type { Sprite, Texture } from 'pixi.js';
 import type { BwSprite } from '../bw/assets';
 import type { BossDef, EnemyDef } from '../data/enemies';
 import type { SpellDef, SpellStats } from '../data/spells';
@@ -66,6 +66,7 @@ export interface Projectile {
   hits: number[]; // uids already hit
   splash: boolean;
   tags: string[];
+  anim?: Texture[]; // spinning/animated Brood War bullet
 }
 
 export interface EnemyShot {
@@ -77,6 +78,8 @@ export interface EnemyShot {
   life: number;
   radius: number;
   sprite: Sprite;
+  /** Who fired it, for "killed by" on the results screen. */
+  by: string;
 }
 
 export interface Gem {
@@ -109,6 +112,8 @@ export interface Lair {
   sprite: Sprite;
   guardian: Enemy | null;
   cleared: boolean;
+  /** The guardian was brought up to the run's current strength (first wake only). */
+  scaled?: boolean;
 }
 
 export interface Cache {
@@ -117,10 +122,14 @@ export interface Cache {
   sprite: Sprite;
   opened: boolean;
   label: Sprite | null;
+  /** Game time when an opened cache restocks. */
+  restockAt?: number;
 }
 
 export interface Fx {
   sprite: Sprite;
+  /** Brood War animation frames played over the effect's life; such effects use normal blending. */
+  frames?: Texture[];
   life: number;
   max: number;
   s0: number;
@@ -218,5 +227,7 @@ export interface SpellInstance {
   orbiters: Sprite[];
   auraSprite: Sprite | null;
   dmgDone: number;
+  /** Mastery cards taken after max rank. */
+  mastery?: number;
   nextSpawn: number;
 }

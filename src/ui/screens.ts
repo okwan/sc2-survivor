@@ -1,5 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
+import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -10,12 +11,12 @@ import { setVolume, sfx } from '../game/audio';
 import { applyCard, dealCards, describeCard, type Card } from '../game/cards';
 import type { Game, RunResult } from '../game/game';
 import type { Rewards } from '../meta/rewards';
-import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem } from '../meta/save';
+import { canLearn, equip, learn, nextPointProgress, perkLevel, persist, pointsEarned, pointsSpent, resetSave, respec, save, stashItem, STASH_MAX } from '../meta/save';
 import { fmtTime } from './hud';
 
 export interface Shell {
   ui: HTMLElement;
-  startRun(race: RaceId, zoneId: string): void;
+  startRun(race: RaceId, zoneId: string): void | Promise<void>;
   quitRun(): void;
   heroPreview(race: RaceId): HTMLCanvasElement | null;
   setKeyHandler(fn: ((code: string) => void) | null): void;
@@ -71,11 +72,16 @@ export function showMenu(shell: Shell) {
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
       <button class="btn" data-a="perks">Rewards <span class="gold">⬢ ${save.vespene}</span></button>
-      <button class="btn" data-a="graphics">Graphics${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
+      <button class="btn" data-a="graphics">Sprites${bwStatus().loaded ? ' <span class="gold">BW</span>' : ''}</button>
       <button class="btn" data-a="settings">Settings</button>
     </div>
-    <div class="menu-actions"><button class="btn primary" data-a="play">Deploy ▸</button></div>
-    <div class="footer">WASD / arrows to move · spells cast automatically · F / Space / right-click to dash (level 5) · 1-4 pick cards · R reroll · Esc pause · mouse wheel zoom<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
+    <div class="menu-actions deploy"><button class="btn primary" data-a="play">Deploy ▸</button></div>
+    <div class="controls">${
+      matchMedia('(pointer: coarse)').matches
+        ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
+        : 'WASD / arrows to move · spells cast automatically · F / Space / right-click to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
+    }</div>
+    <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
   menu.append(inner);
   shell.ui.append(menu);
 
@@ -184,7 +190,13 @@ export function showTalents(shell: Shell, race: RaceId) {
   info.innerHTML = `<div><b class="gold" style="font-size:22px">${earned - spent}</b> points available · ${spent}/${Math.min(earned, TALENT_CAP)} spent · cap ${TALENT_CAP}</div>
     <div class="muted">Next point: ${earned >= TALENT_CAP ? 'maxed' : `${Math.floor(have)}/${need} talent XP`}</div><div class="bar"><i style="width:${(have / need) * 100}%"></i></div>
     <button class="btn small danger" data-reset>Reset (free)</button>`;
-  info.querySelector<HTMLButtonElement>('[data-reset]')!.onclick = () => {
+  const resetBtn = info.querySelector<HTMLButtonElement>('[data-reset]')!;
+  resetBtn.onclick = () => {
+    if (!resetBtn.dataset.sure) {
+      resetBtn.dataset.sure = '1';
+      resetBtn.textContent = 'Click again to reset all talents';
+      return;
+    }
     respec(race);
     showTalents(shell, race);
   };
@@ -251,7 +263,7 @@ export function showArmory(shell: Shell, race: RaceId) {
     eq.append(d);
   }
   const st = document.createElement('div');
-  st.innerHTML = `<div class="section-title" style="margin-top:0">Stash (${rs.stash.length}/24)</div>`;
+  st.innerHTML = `<div class="section-title" style="margin-top:0">Stash (${rs.stash.length}/${STASH_MAX})</div>`;
   if (!rs.stash.length) st.innerHTML += '<div class="muted">Kill guardians in their lairs, slay bosses and open supply caches to find gear. Gear is kept per race.</div>';
   for (const it of rs.stash) {
     const d = document.createElement('div');
@@ -269,6 +281,11 @@ export function showArmory(shell: Shell, race: RaceId) {
     x.textContent = '✕';
     x.title = 'Discard';
     x.onclick = () => {
+      if (!x.dataset.sure) {
+        x.dataset.sure = '1';
+        x.textContent = 'Discard?';
+        return;
+      }
       rs.stash = rs.stash.filter((s) => s.uid !== it.uid);
       persist();
       showArmory(shell, race);
@@ -355,7 +372,7 @@ export function showSettingsMenu(shell: Shell) {
 
 // ================================================================ Brood War graphics
 export function showGraphics(shell: Shell, message = '') {
-  const inner = subScreen(shell, 'Graphics', null, null);
+  const inner = subScreen(shell, 'Optional: real StarCraft sprites', null, null);
   const st = bwStatus();
   const box = document.createElement('div');
   box.className = 'panel modal';
@@ -387,6 +404,8 @@ export function showGraphics(shell: Shell, message = '') {
       const res = buildSprites(got);
       if (!res.loaded) throw new Error('No unit sprites found. Make sure the unit folder is included.');
       await storeFiles(got);
+      resetBwUi();
+      applyBwChrome();
       sfx('level');
       showGraphics(shell);
     } catch (e) {
@@ -398,6 +417,8 @@ export function showGraphics(shell: Shell, message = '') {
   const clr = box.querySelector<HTMLButtonElement>('[data-clear]');
   if (clr) clr.onclick = async () => {
     await clearStoredFiles();
+    resetBwUi();
+    applyBwChrome();
     showGraphics(shell);
   };
   box.ondragover = (e) => {
@@ -445,15 +466,19 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
   g.firstLevelUp = false;
   let cards: Card[] = dealCards(g, n);
   let banishMode = false;
-  const rerollCost = () => 15 + g.rerollsUsed * 10;
+  let showStats = false;
+  // free rerolls don't raise the price of the paid ones
+  const rerollCost = () => 15 + Math.max(0, g.rerollsUsed - g.stats.rerolls) * 10;
 
   const pick = (c: Card) => {
     if (banishMode) {
-      if (g.banishesUsed >= g.stats.banishes) return;
+      if (g.banishesUsed >= g.stats.banishes || c.kind === 'fallback') return;
       g.banishesUsed++;
       g.banished.add(c.key);
       banishMode = false;
-      cards = dealCards(g, cards.length);
+      // replace only the banished card, not the whole hand
+      const fresh = dealCards(g, cards.length + 4).find((x) => !cards.some((y) => y.key === x.key));
+      cards = cards.flatMap((x) => (x === c ? (fresh ? [fresh] : []) : [x]));
       sfx('select');
       render();
       return;
@@ -516,10 +541,24 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       };
       acts.append(bb);
     }
+    const sb = document.createElement('button');
+    sb.className = 'btn small';
+    sb.innerHTML = `<kbd>Esc</kbd> ${showStats ? 'Hide stats' : 'Stats'}`;
+    sb.onclick = () => {
+      showStats = !showStats;
+      render();
+    };
+    acts.append(sb);
     const build = document.createElement('div');
     build.className = 'build-list';
-    build.innerHTML = g.spells.map((s) => `<span class="slot" title="${s.def.name}" style="width:38px;height:38px;font-size:20px">${s.def.icon}<span class="rk">${s.rank === MAX_RANK ? 'MAX' : s.rank}</span></span>`).join('');
+    build.innerHTML = g.spells.map((s) => `<span class="slot" title="${s.def.name}" style="width:38px;height:38px;font-size:20px">${spellIcon(s.def.id, s.def.icon)}<span class="rk">${s.rank === MAX_RANK ? 'MAX' : s.rank}</span></span>`).join('');
     box.append(acts, build);
+    if (showStats) {
+      const st = document.createElement('div');
+      st.className = 'lvstats';
+      st.innerHTML = `<table>${statRowsHtml(g)}</table>`;
+      box.append(st);
+    }
     o.append(box);
   };
   render();
@@ -530,6 +569,9 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     } else if (c === 'KeyR') reroll();
     else if (c === 'KeyB' && g.stats.banishes > g.banishesUsed) {
       banishMode = !banishMode;
+      render();
+    } else if (c === 'Escape' || c === 'Tab') {
+      showStats = !showStats;
       render();
     }
   });
@@ -543,7 +585,8 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   box.className = 'panel modal';
   box.innerHTML = `<h2 style="color:${RARITY_COLORS[item.rarity]}">Gear found!</h2><div class="item">${itemHtml(item)}</div>
     <div class="muted" style="margin-top:6px">Currently equipped:</div><div class="item">${cur ? itemHtml(cur) : '<div class="muted grow">Nothing</div>'}</div>
-    <div class="muted" style="font-size:13px">${cur && gearScore(item) > gearScore(cur) ? 'Looks like an upgrade.' : ''} Equipped gear applies right away and is kept for future ${RACE_DEFS[race].name} runs.</div>`;
+    <div class="muted" style="font-size:13px">${cur && gearScore(item) > gearScore(cur) ? 'Looks like an upgrade.' : ''} Equipped gear applies right away and is kept for future ${RACE_DEFS[race].name} runs.</div>
+    ${save.races[race].stash.length >= STASH_MAX ? `<div style="font-size:13px;color:var(--gold)">Your stash is full (${STASH_MAX}). Stashing scraps your weakest stashed item.</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'row';
   const done = () => {
@@ -554,7 +597,8 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   eb.className = 'btn primary';
   eb.innerHTML = '<kbd>E</kbd> Equip';
   eb.onclick = () => {
-    equip(race, item);
+    const lost = equip(race, item);
+    if (lost.length) g.toastMsg(`Stash full: scrapped ${lost.map((x) => x.name).join(', ')}`, '#ffd34d');
     const hpBefore = g.stats.maxHp;
     g.recomputeStats();
     g.player.hp += Math.max(0, g.stats.maxHp - hpBefore);
@@ -564,7 +608,8 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   sb.className = 'btn';
   sb.innerHTML = '<kbd>S</kbd> Stash';
   sb.onclick = () => {
-    stashItem(race, item);
+    const lost = stashItem(race, item);
+    if (lost.length) g.toastMsg(`Stash full: scrapped ${lost.map((x) => x.name).join(', ')}`, '#ffd34d');
     done();
   };
   row.append(eb, sb);
@@ -576,13 +621,11 @@ export function showGear(shell: Shell, g: Game, item: GearItem, onDone: () => vo
   });
 }
 
-export function showPause(shell: Shell, g: Game, onResume: () => void) {
-  const o = overlay(shell);
-  const box = document.createElement('div');
-  box.className = 'panel modal';
+/** The hero's current stats as table rows (pause menu and level-up screen). */
+function statRowsHtml(g: Game): string {
   const s = g.stats;
   const keyStats: StatKey[] = ['maxHp', 'armor', 'hpRegen', 'maxShield', 'damage', 'haste', 'area', 'critChance', 'critMult', 'moveSpeed', 'pickupRange', 'luck', 'dodge'];
-  const statRows = keyStats
+  return keyStats
     .filter((k) => k !== 'maxShield' || s.maxShield > 0)
     .map((k) => {
       const [label, kind] = STAT_LABELS[k];
@@ -591,8 +634,15 @@ export function showPause(shell: Shell, g: Game, onResume: () => void) {
       return `<tr><td>${label}</td><td>${txt}</td></tr>`;
     })
     .join('');
+}
+
+export function showPause(shell: Shell, g: Game, onResume: () => void) {
+  const o = overlay(shell);
+  const box = document.createElement('div');
+  box.className = 'panel modal';
+  const statRows = statRowsHtml(g);
   box.innerHTML = `<h2>Paused</h2>
-    <div class="build-list">${g.spells.map((sp) => `<span class="slot" title="${sp.def.name}">${sp.def.icon}<span class="rk">${sp.rank}</span></span>`).join('')}</div>
+    <div class="build-list">${g.spells.map((sp) => `<span class="named"><span class="slot" title="${sp.def.name}">${spellIcon(sp.def.id, sp.def.icon)}<span class="rk">${sp.rank}</span></span><small>${sp.def.name}</small></span>`).join('')}</div>
     <div class="results"><table>${statRows}</table></div>`;
   box.append(settingsHtml());
   const row = document.createElement('div');
@@ -608,7 +658,13 @@ export function showPause(shell: Shell, g: Game, onResume: () => void) {
   const qb = document.createElement('button');
   qb.className = 'btn danger';
   qb.textContent = 'Retreat (end run)';
+  let sure = false;
   qb.onclick = () => {
+    if (!sure) {
+      sure = true;
+      qb.textContent = 'Click again to retreat';
+      return;
+    }
     o.remove();
     g.paused = false;
     g.end(false);
@@ -660,6 +716,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const [have, need] = nextPointProgress(r.race);
   box.innerHTML = `<h2 style="color:${won ? 'var(--gold)' : 'var(--danger)'}">${won ? 'Victory' : 'Defeated'}</h2>
     <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.endless ? ' · Endless' : ''}</div>
+    ${!won && r.killedBy ? `<div style="margin-top:4px">Killed by <b style="color:var(--danger)">${r.killedBy}</b></div>` : ''}
     <table style="margin:10px 0"><tr><td>Time survived</td><td>${fmtTime(r.time)}</td></tr><tr><td>Level</td><td>${r.level}</td></tr><tr><td>Kills</td><td>${r.kills}</td></tr><tr><td>Bosses</td><td>${r.bosses}</td></tr></table>
     <div class="section-title" style="margin:10px 0 4px">Damage</div>
     ${r.damage.filter((d) => d.dmg > 0).map((d) => `<div class="dmgrow"><span style="width:150px">${d.icon} ${d.name}</span><div class="bar"><i style="width:${(d.dmg / maxDmg) * 100}%"></i></div><span style="width:60px;text-align:right">${Math.round(d.dmg).toLocaleString()}</span></div>`).join('')}

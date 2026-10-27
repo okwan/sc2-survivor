@@ -1,3 +1,6 @@
+import { bwTerrain } from '../bw/assets';
+import { CONSOLE_H, consoleUrl, hasBwConsole, iconUrl, spellIcon, wireframeUrl, type BwTint } from '../bw/ui';
+import { PAUSE_ICON, RACE_UI, SPELL_ICONS } from '../bw/ui-files';
 import type { Game } from '../game/game';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] {
@@ -6,6 +9,25 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
   if (html) e.innerHTML = html;
   return e;
 }
+
+/** First-run hints, shown once per browser. */
+const TIPS: { at: number; text: string; touch?: string }[] = [
+  { at: 1, text: 'Move with WASD or the arrow keys. Your spells fire on their own.', touch: 'Drag anywhere to move. Your spells fire on their own.' },
+  { at: 8, text: 'Grab the blue crystals enemies drop to level up and pick upgrades.' },
+  { at: 20, text: 'Arrows on the edge point to lairs (orange, guarded gear) and supply caches (yellow, cost minerals).' },
+];
+
+function tipsSeen(set = false): boolean {
+  try {
+    if (set) localStorage.setItem('ks-tips', '1');
+    return localStorage.getItem('ks-tips') === '1';
+  } catch {
+    return set;
+  }
+}
+
+/** Frame counter only for testing: add ?fps to the address. */
+const SHOW_FPS = new URLSearchParams(location.search).has('fps');
 
 export function fmtTime(t: number): string {
   const m = Math.floor(t / 60);
@@ -35,8 +57,15 @@ export class Hud {
   private spellCds: HTMLElement[] = [];
   pauseBtn = el('button', 'pausebtn', '❚❚');
   dashBtn: HTMLButtonElement | null = null;
+  private bw: BwConsole | null = null;
+  private arrowsEl = el('div', 'poi');
+  private tipStep = tipsSeen() ? TIPS.length : 0;
+  private arrows: HTMLElement[] = [];
 
-  constructor(private game: Game, touch: boolean) {
+  constructor(
+    private game: Game,
+    private touch: boolean,
+  ) {
     const xp = el('div', 'xp');
     xp.append(this.xpFill, this.lvl);
     const vit = el('div', 'vitals');
@@ -46,8 +75,13 @@ export class Hud {
     this.shBar.append(this.shFill);
     vit.append(this.shBar, hp);
     this.dashEl.append(this.dashCd, el('div', 'ic', '💨'), el('div', 'k', 'F'));
-    this.root.append(xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
+    this.root.append(this.arrowsEl, xp, this.timer, this.stats, this.bossWrap, vit, this.dashEl, this.spellsEl, this.toasts, this.pauseBtn);
     if (game.stats.maxShield <= 0) this.shBar.style.display = 'none';
+    if (!touch && hasBwConsole(game.race.id)) {
+      this.bw = new BwConsole(game, () => this.pauseBtn.click());
+      this.root.append(this.bw.root);
+      this.root.classList.add('bwmode');
+    }
     if (touch) {
       this.dashBtn = el('button', 'touch-dash', 'DASH');
       this.root.append(this.dashBtn);
@@ -62,21 +96,22 @@ export class Hud {
   }
 
   update() {
+    this.bw?.update();
     const g = this.game;
     const p = g.player;
     const s = g.stats;
     const need = g.xpNeeded;
     const xpk = Math.min(1, p.xp / need);
     this.set('xp', Math.round(xpk * 400), () => (this.xpFill.style.transform = `scaleX(${xpk})`));
-    this.set('lvl', p.level, () => (this.lvl.textContent = `LV ${p.level}`));
+    this.set('lvl', p.level, () => (this.lvl.textContent = `Level ${p.level}`));
     const sec = Math.floor(g.time);
     this.set('time', sec + (g.endless ? 100000 : 0), () => {
       const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;
       this.timer.innerHTML = `${fmtTime(g.time)}<small>${sub}</small>`;
     });
     const fps = Math.round(g.fps);
-    this.set('stats', `${p.kills}|${p.minerals}|${fps}|${g.enemyCount}`, () => {
-      this.stats.innerHTML = `☠ ${p.kills}<br><span class="mineral-ic">💎</span> ${p.minerals}<br><span class="fps">${fps} fps · ${g.enemyCount} units</span>`;
+    this.set('stats', `${p.kills}|${p.minerals}|${SHOW_FPS ? `${fps}|${g.enemyCount}` : ''}`, () => {
+      this.stats.innerHTML = `☠ ${p.kills}<br><span class="minerals">${p.minerals} minerals</span>${SHOW_FPS ? `<br><span class="fps">${fps} fps · ${g.enemyCount} units</span>` : ''}`;
     });
     const hpk = Math.max(0, p.hp / s.maxHp);
     this.set('hp', Math.round(hpk * 300), () => (this.hpFill.style.transform = `scaleX(${hpk})`));
@@ -95,7 +130,10 @@ export class Hud {
       this.dashCd.style.height = `${dk * 100}%`;
       this.dashEl.title = locked ? `${g.race.dashName} unlocks at level 5` : g.race.dashName;
       this.dashEl.style.opacity = locked ? '0.4' : '1';
-      if (this.dashBtn) this.dashBtn.style.opacity = locked ? '0.3' : dk > 0 ? '0.6' : '1';
+      if (this.dashBtn) {
+        this.dashBtn.style.opacity = locked ? '0.3' : dk > 0 ? '0.6' : '1';
+        this.dashBtn.textContent = locked ? 'LV 5' : 'DASH';
+      }
     });
     // spells
     const sig = g.spells.map((x) => `${x.def.id}${x.rank}`).join();
@@ -103,7 +141,7 @@ export class Hud {
       this.spellsEl.innerHTML = '';
       this.spellCds = [];
       for (const sp of g.spells) {
-        const d = el('div', 'slot', sp.def.icon);
+        const d = el('div', 'slot', spellIcon(sp.def.id, sp.def.icon));
         d.title = `${sp.def.name} (rank ${sp.rank})`;
         const cd = el('div', 'cd');
         d.prepend(cd);
@@ -117,6 +155,13 @@ export class Hud {
       const k = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon' ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
       const cd = this.spellCds[i];
       if (cd) cd.style.height = `${Math.round(k * 46)}px`;
+    }
+    this.updateArrows();
+    this.root.classList.toggle('lowhp', p.hp > 0 && p.hp / s.maxHp < 0.3);
+    if (this.tipStep < TIPS.length && g.time >= TIPS[this.tipStep].at) {
+      const t = TIPS[this.tipStep++];
+      this.toast(this.touch ? t.touch ?? t.text : t.text, '#ffe9a8');
+      if (this.tipStep === TIPS.length) tipsSeen(true);
     }
     // bosses
     const seen = new Set<number>();
@@ -145,6 +190,36 @@ export class Hud {
     }
   }
 
+  /** Arrows on the screen edge pointing at off-screen bosses, lairs and supply caches. */
+  private updateArrows() {
+    const g = this.game;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const pad = 28;
+    const bottom = this.bw ? H * 0.27 : 70; // keep clear of the console
+    let n = 0;
+    for (const t of g.pointsOfInterest()) {
+      const [sx, sy] = g.toScreen(t.x, t.y);
+      if (sx > 0 && sx < W && sy > 60 && sy < H - bottom) continue;
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const k = Math.min((cx - pad) / Math.abs(dx || 1), (dy > 0 ? H - bottom - pad - cy : cy - 90) / Math.abs(dy || 1));
+      let a = this.arrows[n];
+      if (!a) {
+        a = el('div', 'arrow');
+        this.arrowsEl.append(a);
+        this.arrows.push(a);
+      }
+      a.className = `arrow ${t.kind}`;
+      a.style.display = '';
+      a.style.transform = `translate(${cx + dx * k}px, ${cy + dy * k}px) rotate(${Math.atan2(dy, dx)}rad)`;
+      n++;
+    }
+    for (let i = n; i < this.arrows.length; i++) this.arrows[i].style.display = 'none';
+  }
+
   toast(msg: string, color = '#dfe8f2') {
     const t = el('div', 'toast');
     t.textContent = msg;
@@ -161,6 +236,191 @@ export class Hud {
   }
 
   destroy() {
+    this.bw?.destroy();
     this.root.remove();
+  }
+}
+
+/** Command card slots in console pixels: three columns, three rows. */
+const CARD_X = [505, 551, 597];
+const CARD_Y = [68, 110, 152];
+const WORLD = 4000;
+const MM = 128;
+
+/**
+ * The Brood War console along the bottom of the screen: minimap, status panel, hero wireframe
+ * and a command card with the spells, dash and pause. Laid out in the console's own 640 px
+ * coordinates and scaled as one piece.
+ */
+class BwConsole {
+  root = el('div', 'bwconsole');
+  private mm = document.createElement('canvas');
+  private mmCtx: CanvasRenderingContext2D;
+  private mmBg: HTMLCanvasElement | null = null;
+  private status = el('div', 'bwstatus');
+  private wire = el('img', 'bwwire');
+  private cells: { root: HTMLDivElement; img: HTMLImageElement; cd: HTMLElement; rk: HTMLElement; key: string }[] = [];
+  private last: Record<string, string | number> = {};
+  private frame = 0;
+  private onResize = () => this.fit();
+
+  constructor(private game: Game, pause: () => void) {
+    this.root.style.backgroundImage = `url(${consoleUrl(game.race.id)})`;
+    this.root.style.height = `${CONSOLE_H}px`;
+    this.mm.width = this.mm.height = MM;
+    this.mm.className = 'bwmm';
+    this.mmCtx = this.mm.getContext('2d')!;
+    const portrait = el('div', 'bwportrait');
+    portrait.append(this.wire);
+    this.root.append(this.mm, this.status, portrait);
+    for (let i = 0; i < 9; i++) {
+      const root = el('div', 'bwcmd');
+      root.style.left = `${CARD_X[i % 3]}px`;
+      root.style.top = `${CARD_Y[Math.floor(i / 3)]}px`;
+      const img = el('img');
+      const cd = el('div', 'cd');
+      const rk = el('div', 'rk');
+      root.append(img, cd, rk);
+      this.root.append(root);
+      this.cells.push({ root, img, cd, rk, key: '' });
+    }
+    const p = this.cells[8];
+    p.root.onclick = pause;
+    p.root.title = 'Menu (Esc)';
+    p.root.classList.add('click');
+    this.setIcon(p, PAUSE_ICON, 'on');
+    this.fit();
+    window.addEventListener('resize', this.onResize);
+  }
+
+  private fit() {
+    const k = Math.min(window.innerWidth / 640, (window.innerHeight * 0.26) / CONSOLE_H, 2.25);
+    this.root.style.transform = `translateX(-50%) scale(${k})`;
+  }
+
+  private setIcon(c: (typeof this.cells)[number], frame: number, tint: BwTint) {
+    const key = `${frame}:${tint}`;
+    if (c.key === key) return;
+    c.key = key;
+    const u = frame >= 0 ? iconUrl(frame, tint) : null;
+    c.img.style.visibility = u ? '' : 'hidden';
+    if (u) c.img.src = u;
+  }
+
+  private set(key: string, v: string | number, fn: () => void) {
+    if (this.last[key] === v) return;
+    this.last[key] = v;
+    fn();
+  }
+
+  update() {
+    const g = this.game;
+    const p = g.player;
+    const s = g.stats;
+    const ru = RACE_UI[g.race.id];
+    // command card: spells 0-5, dash, empty, pause
+    for (let i = 0; i < 6; i++) {
+      const c = this.cells[i];
+      const sp = g.spells[i];
+      if (!sp) {
+        this.setIcon(c, -1, 'on');
+        c.cd.style.height = '0';
+        c.rk.textContent = '';
+        c.root.title = '';
+        continue;
+      }
+      this.setIcon(c, SPELL_ICONS[sp.def.id] ?? -1, 'on');
+      const passive = sp.def.kind === 'orbit' || sp.def.kind === 'aura' || sp.def.kind === 'summon';
+      const k = passive ? 0 : Math.max(0, Math.min(1, sp.timer / sp.stats.cooldown));
+      c.cd.style.height = `${Math.round(k * 34)}px`;
+      this.set(`rk${i}`, `${sp.def.id}${sp.rank}`, () => {
+        c.rk.textContent = `${sp.rank}`;
+        c.root.title = `${sp.def.name} (rank ${sp.rank})`;
+      });
+    }
+    const dash = this.cells[6];
+    const locked = p.level < 5;
+    const dk = locked ? 1 : p.dashCd / (5 * Math.max(0.3, s.dashCooldown));
+    this.setIcon(dash, ru?.dash ?? -1, locked ? 'off' : 'on');
+    dash.cd.style.height = `${Math.round((locked ? 0 : dk) * 34)}px`;
+    this.set('dash', locked ? 1 : 0, () => {
+      dash.root.title = locked ? `${g.race.dashName} unlocks at level 5` : `${g.race.dashName} (F / Space)`;
+      dash.rk.textContent = locked ? '' : 'F';
+    });
+    // status panel and wireframe
+    const hpk = Math.max(0, p.hp / s.maxHp);
+    const tint: BwTint = hpk > 0.66 ? 'hp' : hpk > 0.33 ? 'hurt' : 'dying';
+    this.set('wire', tint, () => {
+      const u = ru ? wireframeUrl(ru.unit, tint) : null;
+      this.wire.style.visibility = u ? '' : 'hidden';
+      if (u) this.wire.src = u;
+    });
+    const xpk = Math.min(1, p.xp / g.xpNeeded);
+    const shield = s.maxShield > 0 ? `<div class="bar sh"><i style="width:${(p.shield / s.maxShield) * 100}%"></i></div><div class="v sh">${Math.ceil(p.shield)}/${Math.round(s.maxShield)}</div>` : '';
+    this.set(
+      'status',
+      `${Math.ceil(p.hp)}|${Math.ceil(p.shield)}|${Math.round(xpk * 100)}|${p.level}|${p.kills}|${p.minerals}|${Math.round(s.maxHp)}`,
+      () => {
+        this.status.innerHTML = `<div class="nm">${g.race.hero}<span>Level ${p.level}</span></div>
+<div class="bar hp"><i style="width:${hpk * 100}%"></i></div><div class="v hp">${Math.ceil(Math.max(0, p.hp))}/${Math.round(s.maxHp)}</div>
+${shield}
+<div class="bar xp"><i style="width:${xpk * 100}%"></i></div>
+<div class="row"><span>Kills ${p.kills}</span><span class="min">Minerals ${p.minerals}</span></div>`;
+      },
+    );
+    if (this.frame++ % 4 === 0) this.drawMinimap();
+  }
+
+  private minimapBackground(): HTMLCanvasElement {
+    if (this.mmBg) return this.mmBg;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = MM;
+    const ctx = cv.getContext('2d')!;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, MM, MM);
+    const tex = bwTerrain(this.game.zone.id);
+    const src = tex?.source.resource as CanvasImageSource | undefined;
+    if (src && tex) {
+      // the ground repeats every texture-width world pixels
+      const step = (tex.width / (WORLD * 2)) * MM;
+      ctx.imageSmoothingEnabled = true;
+      for (let y = 0; y < MM; y += step) for (let x = 0; x < MM; x += step) ctx.drawImage(src, x, y, step, step);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(0, 0, MM, MM);
+    }
+    this.mmBg = cv;
+    return cv;
+  }
+
+  private drawMinimap() {
+    const g = this.game;
+    const ctx = this.mmCtx;
+    const k = MM / (WORLD * 2);
+    const mx = (x: number) => (x + WORLD) * k;
+    ctx.drawImage(this.minimapBackground(), 0, 0);
+    ctx.fillStyle = '#ffd34d';
+    for (const c of g.caches) if (!c.opened) ctx.fillRect(mx(c.x) - 1, mx(c.y) - 1, 3, 3);
+    ctx.fillStyle = '#ff9a3c';
+    for (const l of g.lairs) if (!l.cleared) ctx.fillRect(mx(l.x) - 2, mx(l.y) - 2, 4, 4);
+    ctx.fillStyle = '#e02020';
+    for (let i = 0; i < g.enemyCount; i++) {
+      const e = g.enemies[i];
+      ctx.fillRect(mx(e.x), mx(e.y), 1.5, 1.5);
+    }
+    ctx.fillStyle = '#ff40ff';
+    for (const b of g.bosses) ctx.fillRect(mx(b.x) - 2.5, mx(b.y) - 2.5, 5, 5);
+    const p = g.player;
+    ctx.fillStyle = '#4fff6a';
+    ctx.fillRect(mx(p.x) - 1.5, mx(p.y) - 1.5, 3, 3);
+    // the camera's view, like the white box on the real minimap
+    const hw = (window.innerWidth / 2 / g.zoom) * k;
+    const hh = (window.innerHeight / 2 / g.zoom) * k;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(mx(g.camX) - hw) + 0.5, Math.round(mx(g.camY) - hh) + 0.5, Math.round(hw * 2), Math.round(hh * 2));
+  }
+
+  destroy() {
+    window.removeEventListener('resize', this.onResize);
   }
 }

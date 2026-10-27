@@ -53,7 +53,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Focused Fire', desc: 'Milestone. Gauss Rifle fires 1 extra spike and pierces 1 more enemy.', maxRank: 1, row: 4, col: 1, spells: { gauss: { count: 1, pierce: 1 } }, milestone: 20 },
       { name: 'Veteran', desc: '+3% cooldown speed per rank.', maxRank: 3, row: 4, col: 3, stats: { haste: 0.03 } },
       { name: 'Hold the Line', desc: '+1 armor per rank.', maxRank: 5, row: 5, col: 1, stats: { armor: 1 } },
-      { name: 'Raynor\'s Raiders', desc: 'Capstone. Start with Gauss Rifle. Gauss Rifle fires 2 extra spikes and deals 30% more damage. Stimpack lasts 2 sec longer.', maxRank: 1, row: 6, col: 1, startSpell: 'gauss', flag: 'raiders', spells: { gauss: { count: 2, damage: 0.3 } }, milestone: 30 },
+      { name: 'Raynor\'s Raiders', desc: 'Capstone. Gauss Rifle fires 2 extra spikes and deals 30% more damage. Stimpack lasts 2 sec longer.', maxRank: 1, row: 6, col: 1, startSpell: 'gauss', flag: 'raiders', spells: { gauss: { count: 2, damage: 0.3 } }, milestone: 30 },
     ])),
     chain(tree('mech', 'Mech', '⚙️', 'Fire, explosives and heavy armor. Burn the swarm down.', [
       { name: 'Infernal Pre-Igniter', desc: 'Flamethrower deals 6% more damage per rank.', maxRank: 5, row: 0, col: 0, spells: { flame: { damage: 0.06 } } },
@@ -65,9 +65,9 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Smart Servos', desc: '+4% move speed per rank.', maxRank: 3, row: 3, col: 0, stats: { moveSpeed: 8 } },
       { name: 'Payload', desc: '+3% area per rank.', maxRank: 5, row: 3, col: 2, stats: { area: 0.03 } },
       { name: 'Siege Tech', desc: 'Milestone. Frag Grenade throws 1 extra grenade with 25% more area.', maxRank: 1, row: 4, col: 1, spells: { frag: { count: 1, area: 0.25 } }, milestone: 20 },
-      { name: 'Drilling Claws', desc: 'Spider Mines: +1 mine per 2 ranks (rounded down) and +8% damage per rank.', maxRank: 3, row: 4, col: 3, spells: { mines: { damage: 0.08, count: 0.34 } } },
+      { name: 'Drilling Claws', desc: 'Spider Mines: +1 mine per 2 ranks (rounded down) and +8% damage per rank.', maxRank: 3, row: 4, col: 3, spells: { mines: { damage: 0.08, count: 0.5 } } },
       { name: 'Behemoth Reactor', desc: '+3% damage per rank.', maxRank: 5, row: 5, col: 1, stats: { damage: 0.03 } },
-      { name: 'Hellbat Assault', desc: 'Capstone. Start with Flamethrower. Flamethrower gains 40% area and 40% damage, and Napalm burns twice as hard.', maxRank: 1, row: 6, col: 1, startSpell: 'flame', flag: 'hellbat', spells: { flame: { area: 0.4, damage: 0.4 } }, milestone: 30 },
+      { name: 'Hellbat Assault', desc: 'Capstone. Also start with Flamethrower. Flamethrower gains 40% area and 40% damage, and Napalm burns twice as hard.', maxRank: 1, row: 6, col: 1, startSpell: 'flame', flag: 'hellbat', spells: { flame: { area: 0.4, damage: 0.4 } }, milestone: 30 },
     ])),
     chain(tree('covert', 'Covert Ops', '🎯', 'Ghosts and precision strikes. Crit hard and call down nukes.', [
       { name: 'Lockdown Training', desc: '+2% crit chance per rank.', maxRank: 5, row: 0, col: 0, stats: { critChance: 0.02 } },
@@ -81,7 +81,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Sniper Round', desc: 'Milestone. +10% crit chance and +50% crit damage.', maxRank: 1, row: 4, col: 1, stats: { critChance: 0.1, critMult: 0.5 }, milestone: 20 },
       { name: 'Luck of the Ghost', desc: '+8% luck per rank.', maxRank: 3, row: 4, col: 3, stats: { luck: 0.08 } },
       { name: 'Enhanced Shockwaves', desc: '+3% area per rank.', maxRank: 5, row: 5, col: 1, stats: { area: 0.03 } },
-      { name: 'Tactical Nuke', desc: 'Capstone. Start with Spider Mines. Every 10 sec a nuke hits the densest enemy pack for 1200% damage.', maxRank: 1, row: 6, col: 1, startSpell: 'mines', flag: 'nuke', milestone: 30 },
+      { name: 'Tactical Nuke', desc: 'Capstone. Also start with Spider Mines. Every 10 sec a nuke hits the densest enemy pack for 1200% damage.', maxRank: 1, row: 6, col: 1, startSpell: 'mines', flag: 'nuke', milestone: 30 },
     ])),
   ],
   zerg: [
@@ -95,9 +95,9 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Larva Injection', desc: '+5% experience per rank.', maxRank: 3, row: 3, col: 0, stats: { xpGain: 0.05 } },
       { name: 'Frenzy', desc: '+2% damage per rank.', maxRank: 5, row: 3, col: 2, stats: { damage: 0.02 } },
       { name: 'Adrenal Glands', desc: 'Milestone. +15% cooldown speed.', maxRank: 1, row: 4, col: 1, stats: { haste: 0.15 }, milestone: 20 },
-      { name: 'Swarm Host', desc: 'Broodlings +1 per 2 ranks (rounded down).', maxRank: 3, row: 4, col: 3, spells: { brood: { count: 0.34 } } },
+      { name: 'Swarm Host', desc: 'Broodlings +1 per 2 ranks (rounded down).', maxRank: 3, row: 4, col: 3, spells: { brood: { count: 0.5 } } },
       { name: 'Predatory Instinct', desc: '+2% crit chance per rank.', maxRank: 5, row: 5, col: 1, stats: { critChance: 0.02 } },
-      { name: 'Endless Swarm', desc: 'Capstone. Start with Broodlings. +3 broodlings, and every kill has a 10% chance to hatch a temporary broodling.', maxRank: 1, row: 6, col: 1, startSpell: 'brood', flag: 'endlessSwarm', spells: { brood: { count: 3 } }, milestone: 30 },
+      { name: 'Endless Swarm', desc: 'Capstone. Also start with Broodlings. +3 broodlings, and every kill has a 10% chance to hatch a temporary broodling.', maxRank: 1, row: 6, col: 1, startSpell: 'brood', flag: 'endlessSwarm', spells: { brood: { count: 3 } }, milestone: 30 },
     ])),
     chain(tree('evolution', 'Evolution', '🧬', 'Regeneration and carapace. Shrug off what would kill anything else.', [
       { name: 'Chitinous Plating', desc: '+1 armor per rank.', maxRank: 5, row: 0, col: 0, stats: { armor: 1 } },
@@ -111,7 +111,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Hardened Carapace', desc: 'Milestone. +4 armor and +30 max health.', maxRank: 1, row: 4, col: 1, stats: { armor: 4, maxHp: 30 }, milestone: 20 },
       { name: 'Vile Mutation', desc: '+3% damage per rank.', maxRank: 3, row: 4, col: 3, stats: { damage: 0.03 } },
       { name: 'Lurker Den', desc: 'Creep Bloom lasts 8% longer and hits 8% harder per rank.', maxRank: 5, row: 5, col: 1, spells: { acidpool: { duration: 0.08, damage: 0.08 } } },
-      { name: 'Primal Mutation', desc: 'Capstone. Start with Acid Spores. +50% max health, Acid Spores gain 50% area and heal you for each enemy they kill.', maxRank: 1, row: 6, col: 1, startSpell: 'spores', flag: 'primal', spells: { spores: { area: 0.5 } }, milestone: 30 },
+      { name: 'Primal Mutation', desc: 'Capstone. Also start with Acid Spores. +50% max health, Acid Spores gain 50% area, deal 60% more damage and heal you for each enemy they kill.', maxRank: 1, row: 6, col: 1, startSpell: 'spores', flag: 'primal', spells: { spores: { area: 0.5, damage: 0.6 } }, milestone: 30 },
     ])),
     chain(tree('brood', 'Brood', '🥚', 'Bile and spines. Bombard the field from a distance.', [
       { name: 'Volatile Bile', desc: 'Corrosive Bile deals 6% more damage per rank.', maxRank: 5, row: 0, col: 0, spells: { bile: { damage: 0.06 } } },
@@ -124,8 +124,8 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Accelerated Gestation', desc: '+2% cooldown speed per rank.', maxRank: 5, row: 3, col: 2, stats: { haste: 0.02 } },
       { name: 'Spawn Larvae', desc: 'Milestone. +1 projectile for every spell that fires projectiles or summons.', maxRank: 1, row: 4, col: 1, stats: { extraProj: 1 }, milestone: 20 },
       { name: 'Bile Ducts', desc: '+3% area per rank.', maxRank: 3, row: 4, col: 3, stats: { area: 0.03 } },
-      { name: 'Barbed Spines', desc: 'Needle Spines pierce +1 per 2 ranks (rounded down) and deal 5% more damage per rank.', maxRank: 5, row: 5, col: 1, spells: { spines: { pierce: 0.4, damage: 0.05 } } },
-      { name: 'Leviathan Spines', desc: 'Capstone. Start with Needle Spines. Needle Spines fire 2 extra spines, pierce 3 more and deal 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'spines', spells: { spines: { count: 2, pierce: 3, damage: 0.5 } }, milestone: 30 },
+      { name: 'Barbed Spines', desc: 'Needle Spines pierce +1 per 2 ranks (rounded down) and deal 5% more damage per rank.', maxRank: 5, row: 5, col: 1, spells: { spines: { pierce: 0.5, damage: 0.05 } } },
+      { name: 'Leviathan Spines', desc: 'Capstone. Needle Spines fire 2 extra spines, pierce 3 more and deal 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'spines', spells: { spines: { count: 2, pierce: 3, damage: 0.5 } }, milestone: 30 },
     ])),
   ],
   protoss: [
@@ -141,7 +141,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Feedback', desc: 'Milestone. When your shields break, release a psionic blast for 400% damage (8 sec cooldown).', maxRank: 1, row: 4, col: 1, flag: 'feedback', milestone: 20 },
       { name: 'Plasma Surge', desc: '+6 max shields per rank.', maxRank: 3, row: 4, col: 3, stats: { maxShield: 6 } },
       { name: 'Storm Lord', desc: 'Psionic Storm area +5% and duration +5% per rank.', maxRank: 5, row: 5, col: 1, spells: { storm: { area: 0.05, duration: 0.05 } } },
-      { name: 'Archon Merge', desc: 'Capstone. Start with Arc Lightning. Arc Lightning bounces 4 more times and deals 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'arc', spells: { arc: { pierce: 4, damage: 0.5 } }, milestone: 30 },
+      { name: 'Archon Merge', desc: 'Capstone. Also start with Arc Lightning. Arc Lightning bounces 4 more times and deals 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'arc', spells: { arc: { pierce: 4, damage: 0.5 } }, milestone: 30 },
     ])),
     chain(tree('nerazim', 'Nerazim', '🌑', 'Dark templar void arts. Blink in, cleave and vanish.', [
       { name: 'Warp Blades', desc: 'Psi Blades deal 6% more damage per rank.', maxRank: 5, row: 0, col: 0, spells: { blades: { damage: 0.06 } } },
@@ -155,7 +155,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Void Strike', desc: 'Milestone. +12% crit chance. Crits deal 30% more damage.', maxRank: 1, row: 4, col: 1, stats: { critChance: 0.12, critMult: 0.3 }, milestone: 20 },
       { name: 'Umbral Edge', desc: '+3% damage per rank.', maxRank: 3, row: 4, col: 3, stats: { damage: 0.03 } },
       { name: 'Blink Matrix', desc: '+3% cooldown speed per rank.', maxRank: 5, row: 5, col: 1, stats: { haste: 0.03 } },
-      { name: 'Dark Templar', desc: 'Capstone. Start with Psi Blades. Psi Blades strike twice, gain 30% area and execute non-boss enemies below 15% health.', maxRank: 1, row: 6, col: 1, startSpell: 'blades', flag: 'darkTemplar', spells: { blades: { area: 0.3 } }, milestone: 30 },
+      { name: 'Dark Templar', desc: 'Capstone. Psi Blades strike twice, gain 30% area and execute non-boss enemies below 15% health.', maxRank: 1, row: 6, col: 1, startSpell: 'blades', flag: 'darkTemplar', spells: { blades: { area: 0.3 } }, milestone: 30 },
     ])),
     chain(tree('purifier', 'Purifier', '🛡️', 'Shields and robotics. Outlast anything behind an army of drones.', [
       { name: 'Shield Capacitors', desc: '+8 max shields per rank.', maxRank: 5, row: 0, col: 0, stats: { maxShield: 8 } },
@@ -169,7 +169,7 @@ export const TALENTS: Record<RaceId, TalentTree[]> = {
       { name: 'Graviton Catapult', desc: 'Milestone. Interceptors +2, Photon Bolt +1 projectile.', maxRank: 1, row: 4, col: 1, spells: { interceptors: { count: 2 }, photon: { count: 1 } }, milestone: 20 },
       { name: 'Solarite Core', desc: '+3% damage per rank.', maxRank: 3, row: 4, col: 3, stats: { damage: 0.03 } },
       { name: 'Khala\'s Light', desc: '+2% cooldown speed per rank.', maxRank: 5, row: 5, col: 1, stats: { haste: 0.02 } },
-      { name: 'Carrier Command', desc: 'Capstone. Start with Interceptors. +3 interceptors and they deal 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'interceptors', spells: { interceptors: { count: 3, damage: 0.5 } }, milestone: 30 },
+      { name: 'Carrier Command', desc: 'Capstone. Also start with Interceptors. +3 interceptors and they deal 50% more damage.', maxRank: 1, row: 6, col: 1, startSpell: 'interceptors', spells: { interceptors: { count: 3, damage: 0.5 } }, milestone: 30 },
     ])),
   ],
 };

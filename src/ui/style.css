@@ -29,6 +29,7 @@ html, body {
 #app canvas { display: block; position: fixed; inset: 0; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #ui > * { pointer-events: auto; }
+#ui > .hud { pointer-events: none; } /* let wheel zoom and right-click dash reach the game */
 #ui .passthrough { pointer-events: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
 
@@ -202,17 +203,18 @@ kbd {
 
 /* ---------------------------------------------------------- HUD */
 .hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
-.hud .xp { position: absolute; left: 0; right: 0; top: 0; height: 14px; background: rgba(0, 0, 0, 0.6); border-bottom: 1px solid #3a2a6a; }
+.hud .xp { position: absolute; left: 0; right: 0; top: 0; height: 20px; background: rgba(0, 0, 0, 0.6); border-bottom: 1px solid #3a2a6a; }
 .hud .xp > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: left; background: linear-gradient(90deg, #5a2cff, #b07cff); box-shadow: 0 0 10px #8a5cff; }
-.hud .lvl { position: absolute; right: 8px; top: 0; font-size: 12px; font-weight: 800; line-height: 14px; text-shadow: 0 0 3px #000; }
-.hud .timer { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; text-shadow: 0 2px 4px #000; letter-spacing: 0.05em; }
+.hud .lvl { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 15px; font-weight: 800; line-height: 20px; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.hud .timer { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; text-shadow: 0 2px 4px #000; letter-spacing: 0.05em; }
 .hud .timer small { display: block; text-align: center; font-size: 12px; color: var(--muted); letter-spacing: 0.15em; font-weight: 600; }
-.hud .stats { position: absolute; top: 20px; right: 12px; text-align: right; font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px #000; line-height: 1.35; }
+.hud .stats { position: absolute; top: 26px; right: 12px; text-align: right; font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px #000; line-height: 1.35; }
 .hud .stats .fps { font-size: 11px; color: var(--muted); }
 .hud .bosses { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); width: min(560px, 90vw); }
 .bossbar { margin-bottom: 6px; }
-.bossbar .nm { font-size: 14px; font-weight: 800; text-shadow: 0 1px 3px #000; display: flex; justify-content: space-between; }
+.bossbar .nm { font-size: 14px; font-weight: 800; text-shadow: 0 1px 3px #000; text-align: center; }
 .bossbar .nm span { color: var(--muted); font-weight: 600; }
+.bossbar .nm span::before { content: ', '; }
 .bossbar .b { height: 12px; background: rgba(0, 0, 0, 0.7); border: 1px solid #6a2a2a; position: relative; }
 .bossbar .b i { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #ff3a3a, #ff8a3a); }
 .bossbar.enraged .b i { background: linear-gradient(90deg, #ff0000, #ff3a8a); animation: pulse 0.5s infinite alternate; }
@@ -241,7 +243,7 @@ kbd {
 .boss-banner h2 { font-size: clamp(30px, 6vw, 56px); color: #ff5050; text-shadow: 0 0 20px #f00; }
 .boss-banner div { color: var(--gold); letter-spacing: 0.3em; text-transform: uppercase; }
 @keyframes banner { 0% { opacity: 0; transform: scale(1.3); } 10% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
-.pausebtn { position: absolute; top: 20px; left: 12px; pointer-events: auto; padding: 4px 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid #3a5a7a; font-size: 18px; }
+.pausebtn { position: absolute; top: 26px; left: 12px; pointer-events: auto; padding: 4px 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid #3a5a7a; font-size: 18px; }
 .mineral-ic { color: #7ad8ff; }
 
 /* ---------------------------------------------------------- level up */
@@ -302,3 +304,68 @@ kbd {
 .joystick .knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; border-radius: 50%; background: rgba(79, 210, 255, 0.4); border: 2px solid rgba(255, 255, 255, 0.5); transform: translate(-50%, -50%); }
 .touch-dash { position: absolute; right: 18px; bottom: 120px; width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--accent); background: rgba(0, 0, 0, 0.5); font-weight: 800; pointer-events: auto; }
 a { color: var(--accent); }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }
+
+/* ---------------------------------------------------------- Brood War chrome (when the art is loaded) */
+html.bw-cursor, html.bw-cursor * { cursor: var(--bw-cursor) !important; }
+html.bw-menu .menu {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.75)),
+    var(--bw-menu-bg) center / cover no-repeat,
+    #000;
+}
+.bwic { width: 36px; height: 34px; image-rendering: pixelated; display: block; }
+.slot .bwic { width: 100%; height: auto; }
+.card .ic .bwic, .dmgrow .bwic { display: inline-block; vertical-align: middle; }
+.dmgrow .bwic { width: 24px; height: auto; }
+
+.hud.bwmode .vitals, .hud.bwmode .spells, .hud.bwmode .dash, .hud.bwmode .pausebtn { display: none; }
+.bwconsole {
+  position: absolute; left: 50%; bottom: 0; width: 640px;
+  transform-origin: 50% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  color: #dfe8d0;
+}
+.bwmm { position: absolute; left: 6px; top: 58px; width: 128px; height: 128px; image-rendering: pixelated; }
+.bwportrait { position: absolute; left: 415px; top: 119px; width: 56px; height: 56px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.bwwire { width: 64px; height: 64px; image-rendering: pixelated; flex: none; }
+.bwstatus { position: absolute; left: 162px; top: 103px; width: 232px; font-size: 10px; line-height: 1.15; text-shadow: 0 1px 0 #000; }
+.bwstatus .nm { font-weight: 700; font-size: 12px; color: #fff; display: flex; justify-content: space-between; margin-bottom: 3px; }
+.bwstatus .nm span { color: #c8ff6a; font-size: 10px; }
+.bwstatus .bar { position: relative; height: 5px; background: #101810; border: 1px solid #2c3c2c; margin-top: 2px; }
+.bwstatus .bar i { position: absolute; left: 0; top: 0; bottom: 0; }
+.bwstatus .bar.hp i { background: #2cd83c; }
+.bwstatus .bar.sh i { background: #3c9cff; }
+.bwstatus .bar.xp i { background: #9a6cff; }
+.bwstatus .v { font-size: 9px; text-align: right; margin-top: -1px; }
+.bwstatus .v.hp { color: #5cff5c; }
+.bwstatus .v.sh { color: #8cc8ff; }
+.bwstatus .row { display: flex; justify-content: space-between; margin-top: 4px; color: #e8e8c8; }
+.bwstatus .row .min { color: #8ad8ff; }
+.bwcmd { position: absolute; width: 36px; height: 34px; overflow: hidden; pointer-events: auto; }
+.bwcmd img { display: block; width: 36px; height: 34px; image-rendering: pixelated; }
+.bwcmd .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); }
+.bwcmd .rk { position: absolute; right: 2px; bottom: 0; font-size: 9px; font-weight: 800; color: var(--gold); text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.bwcmd.click:hover img { filter: brightness(1.5); }
+
+/* off-screen pointers */
+.hud .poi .arrow { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; }
+.hud .poi .arrow::before { content: ''; position: absolute; inset: 0; clip-path: polygon(100% 50%, 0 0, 25% 50%, 0 100%); background: currentColor; filter: drop-shadow(0 0 3px currentColor); }
+.hud .poi .arrow.boss { color: #ff4040; width: 26px; height: 26px; left: -13px; top: -13px; }
+.hud .poi .arrow.lair { color: #ff9a3c; }
+.hud .poi .arrow.cache { color: #ffd34d; }
+.hud .stats .minerals { color: #7ad8ff; font-size: 14px; }
+.hud.lowhp::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px rgba(255, 0, 0, 0.45); animation: lowhp 1s ease-in-out infinite alternate; }
+@keyframes lowhp { from { opacity: 0.5; } to { opacity: 1; } }
+.menu .controls { text-align: center; color: var(--muted); font-size: 14px; margin: 14px auto 0; max-width: 760px; }
+@media (pointer: coarse) {
+  kbd, .key { display: none !important; }
+  .menu .deploy { position: sticky; bottom: 8px; z-index: 2; }
+}
+.build-list .named { display: flex; flex-direction: column; align-items: center; width: 72px; gap: 2px; }
+.build-list .named small { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.1; }
+.lvstats { margin: 8px auto 0; max-width: 560px; background: rgba(5, 10, 18, 0.85); border: 1px solid var(--line); padding: 6px 12px; }
+.lvstats table { width: 100%; display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; font-size: 13px; }
+.lvstats tbody { display: contents; }
+.lvstats tr { display: flex; justify-content: space-between; }

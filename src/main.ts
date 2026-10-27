@@ -1,5 +1,5 @@
 import { Application, Sprite } from 'pixi.js';
-import { ZONE_BY_ID } from './data/enemies';
+import { ZONE_BY_ID, ZONES } from './data/enemies';
 import type { RaceId } from './data/types';
 import { setVolume, unlockAudio } from './game/audio';
 import { Game } from './game/game';
@@ -7,7 +7,8 @@ import { Input } from './game/input';
 import { grantRewards } from './meta/rewards';
 import { save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
-import { bwSprite, initBw } from './bw/assets';
+import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
+import { applyBwChrome } from './bw/ui';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
@@ -26,6 +27,8 @@ async function boot() {
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
   await initBw();
+  applyBwChrome();
+  prefetchTerrain(ZONES.map((z) => z.id));
   setVolume(save.settings.volume);
 
   const input = new Input(app.canvas);
@@ -40,6 +43,27 @@ async function boot() {
     if (game && !game.over) game.paused = false;
   };
 
+  // In-run dialogs (level-up, gear, victory, pause) open one at a time: when two are raised on the
+  // same frame the second waits, and the game only resumes after the last one closes.
+  let dialogs: ((done: () => void) => void)[] = [];
+  let dialogOpen = false;
+  const nextDialog = () => {
+    const show = dialogs.shift();
+    if (!show) {
+      dialogOpen = false;
+      resume();
+      return;
+    }
+    dialogOpen = true;
+    if (game) game.paused = true;
+    show(nextDialog);
+  };
+  const openDialog = (show: (done: () => void) => void) => {
+    if (game) game.paused = true;
+    dialogs.push(show);
+    if (!dialogOpen) nextDialog();
+  };
+
   const runKeys = (code: string) => {
     if (!game || game.over) return;
     if ((code === 'Escape' || code === 'KeyP') && !game.paused) pause();
@@ -47,8 +71,8 @@ async function boot() {
 
   const pause = () => {
     if (!game || game.paused || game.over) return;
-    game.paused = true;
-    showPause(shell, game, resume);
+    const g = game;
+    openDialog((done) => showPause(shell, g, done));
   };
 
   const shell: Shell = {
@@ -79,19 +103,20 @@ async function boot() {
       copy.getContext('2d')!.drawImage(cv, 0, 0);
       return copy;
     },
-    startRun(race, zoneId) {
+    async startRun(race, zoneId) {
       unlockAudio();
       shell.quitRun();
-      ui.innerHTML = '';
+      ui.innerHTML = '<div class="loading">Warping in...</div>';
       const zone = ZONE_BY_ID[zoneId] ?? ZONE_BY_ID.marsara;
+      await ensureZoneFiles(zone.id);
+      ui.innerHTML = '';
+      dialogs = [];
+      dialogOpen = false;
       const g: Game = new Game(app, input, race, zone, {
-        levelUp: () => showLevelUp(shell, g, resume),
-        gear: (item) => showGear(shell, g, item, resume),
+        levelUp: () => openDialog((done) => showLevelUp(shell, g, done)),
+        gear: (item) => openDialog((done) => showGear(shell, g, item, done)),
         bossSpawned: (name, title) => hud?.bossBanner(name, title),
-        victory: () => {
-          g.paused = true;
-          showVictory(shell, g, resume);
-        },
+        victory: () => openDialog((done) => showVictory(shell, g, done)),
         ended: (r) => {
           const rw = grantRewards(r);
           setTimeout(() => showResults(shell, r, rw), r.won ? 300 : 900);

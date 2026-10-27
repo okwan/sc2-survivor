@@ -22,7 +22,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
   switch (def.kind) {
     case 'bolt': {
       const range = st.speed * st.duration;
-      const targets = g.nearestEnemies(p.x, p.y, st.count, range);
+      const targets = g.preferBoss(g.nearestEnemies(p.x, p.y, st.count, range), range);
       if (!targets.length) return false;
       for (let i = 0; i < st.count; i++) {
         const t = targets[i % targets.length];
@@ -119,7 +119,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
     }
     case 'beam': {
       const len = 900;
-      const targets = g.nearestEnemies(p.x, p.y, st.count, len * 0.8);
+      const targets = g.preferBoss(g.nearestEnemies(p.x, p.y, st.count, len * 0.8), len * 0.8);
       if (!targets.length) return false;
       for (let i = 0; i < st.count; i++) {
         const t = targets[i % targets.length];
@@ -195,8 +195,9 @@ export function updatePersistent(g: Game, s: SpellInstance, dt: number) {
       const bw = bwSprite(def.id === 'scourge' ? 'minion:scourge' : 'minion:interceptor');
       if (bw) orientBw(spr, bw, a + Math.PI / 2, 24 / bw.size);
       else spr.rotation = a + Math.PI / 2;
-      g.forEnemiesInRadius(x, y, 16, (e) => {
-        if (now - e.hitStamp[s.slot] < hitCd) return;
+      g.forEnemiesInRadius(x, y, 22, (e) => {
+        // the swarm shares one timer per enemy, so each orbiter adds a hit per cooldown
+        if (now - e.hitStamp[s.slot] < hitCd / n) return;
         e.hitStamp[s.slot] = now;
         g.hit(e, st.damage, s.slot, { kx: Math.cos(a) * 160, ky: Math.sin(a) * 160, tags: def.tags });
       });
@@ -216,7 +217,8 @@ export function updatePersistent(g: Game, s: SpellInstance, dt: number) {
     spr.rotation += dt * 0.5;
   } else if (def.kind === 'summon') {
     const kind = def.id === 'turret' ? 'turret' : 'brood';
-    const mine = g.minions.filter((m) => m.slot === s.slot);
+    // only the permanent summons count; temporary broodlings (Endless Swarm) are extra
+    const mine = g.minions.filter((m) => m.slot === s.slot && m.life === Infinity);
     if (mine.length < st.count) {
       if (g.time >= s.nextSpawn) {
         g.addMinion(kind, s.slot, p.x + (Math.random() - 0.5) * 60, p.y + (Math.random() - 0.5) * 60, Infinity, st.damage);
