@@ -61,7 +61,7 @@ export class WowHud {
   private tPortrait = el('div', 'portrait');
   private mm = el('div', 'wowmm');
   private radar: Radar;
-  private zone = el('div', 'zone');
+  private zone = el('div', 'zonetxt');
   private info = el('div', 'info');
   private bagCount = el('span', 'count');
   private last: Record<string, string | number> = {};

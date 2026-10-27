@@ -34,9 +34,19 @@ html.wow-dialog .modal {
   border-style: solid;
   border-width: 24px;
   border-color: transparent;
-  border-image: var(--wow-dialog) var(--wow-dialog-slice) / 24px round;
   box-shadow: none;
   padding: 10px 14px;
+}
+/* the border goes on a layer above the background (an element's own border paints under its ::before) */
+html.wow-dialog .panel::after,
+html.wow-dialog .modal::after {
+  content: '';
+  position: absolute;
+  inset: -24px;
+  z-index: 1;
+  border: 24px solid transparent;
+  border-image: var(--wow-dialog) var(--wow-dialog-slice) / 24px round;
+  pointer-events: none;
 }
 html.wow-dialog .panel::before,
 html.wow-dialog .modal::before {
@@ -84,7 +94,6 @@ html.wow-tip .objective {
   border-style: solid;
   border-width: 12px;
   border-color: transparent;
-  border-image: var(--wow-tip) var(--wow-tip-slice) / 12px round;
   box-shadow: none;
 }
 html.wow-tip .race-card,
@@ -125,13 +134,38 @@ html.wow-tip .objective::before {
   background: var(--wow-tip-bg);
   pointer-events: none;
 }
-html.wow-tip .sel,
-html.wow-tip .ach.got,
-html.wow-tip .card:hover,
-html.wow-tip .race-card:hover:not(.sel),
-html.wow-tip .zone:hover:not(.locked) {
+html.wow-tip .tooltip::after,
+html.wow-tip .race-card::after,
+html.wow-tip .zone::after,
+html.wow-tip .hero-pick::after,
+html.wow-tip .diff::after,
+html.wow-tip .mut::after,
+html.wow-tip .daily::after,
+html.wow-tip .tree::after,
+html.wow-tip .item::after,
+html.wow-tip .perk::after,
+html.wow-tip .ach::after,
+html.wow-tip .card::after,
+html.wow-tip .tab::after,
+html.wow-tip .lvstats::after,
+html.wow-tip .toast::after,
+html.wow-tip .objective::after {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  z-index: 1;
+  border: 12px solid transparent;
+  border-image: var(--wow-tip) var(--wow-tip-slice) / 12px round;
+  pointer-events: none;
+}
+html.wow-tip .sel::after,
+html.wow-tip .ach.got::after,
+html.wow-tip .card:hover::after,
+html.wow-tip .race-card:hover::after,
+html.wow-tip .hero-pick:hover:not(.locked)::after,
+html.wow-tip .diff:hover:not(.locked)::after,
+html.wow-tip .zone:hover:not(.locked)::after {
   border-image-source: var(--wow-tip-gold);
-  box-shadow: none;
 }
 html.wow-tip .race-card.sel::before,
 html.wow-tip .zone.sel::before,
@@ -257,6 +291,7 @@ html.wow .slot .rk { color: #fff; font-family: 'Arial Narrow WoW', 'Arial Narrow
 html.wow .levelup h2 { font-family: 'Morpheus', 'Friz Quadrata', serif; color: var(--wow-gold); text-shadow: 2px 2px 0 #000; font-size: 44px; }
 html.wow .levelup .hint { color: #fff; }
 html.wow .card { text-align: left; padding: 10px 12px; min-height: 0; width: 230px; }
+html.wow .card .key { top: 0; left: auto; right: 0; }
 html.wow .card .rar { color: var(--rc); letter-spacing: 0; text-transform: none; font-weight: normal; font-size: 12px; }
 html.wow .card .nm { font-weight: normal; font-size: 17px; color: var(--rc); }
 html.wow .card .ty { color: #fff; font-size: 12px; }
@@ -343,5 +378,5 @@ html.wow .hud .lvl, html.wow .hud .stats { font-weight: normal; }
 .wowmm { position: absolute; right: 0; top: 0; width: 192px; height: 210px; transform-origin: 100% 0; }
 .wowmm .radar { position: absolute; left: 35px; top: 22px; width: 140px; height: 140px; border-radius: 50%; }
 .wowmm .border { position: absolute; left: 9px; top: 0; width: 192px; height: 192px; background-size: 100% 100%; }
-.wowmm .zone { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font-size: 12px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; }
+.wowmm .zonetxt { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font-size: 12px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; }
 .wowmm .info { position: absolute; left: 0; right: 0; top: 168px; text-align: center; font-size: 12px; color: #fff; text-shadow: 1px 1px 0 #000; }

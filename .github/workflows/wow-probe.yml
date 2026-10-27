@@ -23,9 +23,9 @@ jobs:
           key: wow-${{ hashFiles('scripts/fetch-wow.mjs', 'scripts/blp.mjs') }}
           restore-keys: wow-
       - run: node scripts/fetch-wow.mjs dist
-        env:
-          WOW_LIST: '1'
-      - run: du -sh dist/wow && ls dist/wow
+      - run: |
+          du -sh dist/wow && ls dist/wow
+          node -e "const m=require('./dist/wow/manifest.json');for(const [f,s] of Object.entries(m.sizes))if(/minimap\/|loadingscreens|glues\/common|mainmenubar|dialogframe|tooltips\/|targetingframe|buttons\/ui-panel|quickslot|microbutton|backpack|cursor\/point|talentframe\/|paperdollinfoframe\/ui-character-.*tab/.test(f))console.log('WF',f,s.join('x'));console.log('icons',m.icons.length,'fonts',m.fonts.join(' '),'sounds',m.sounds.filter(s=>/level|quest|checkbox|mainmenu/i.test(s)).join(' '))"
       - run: npm i --no-save playwright-core
       - run: |
           npx vite preview --port 4399 --strictPort &
