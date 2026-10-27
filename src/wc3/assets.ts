@@ -32,3 +32,54 @@ export const WC3_ANIMS = ['stand', 'walk', 'attack', 'spell', 'death'] as const;
 export type Wc3Anim = (typeof WC3_ANIMS)[number];
 /** Directions per animation, clockwise from facing up the screen. */
 export const WC3_DIRS = 16;
+
+/** Warcraft III command-card icons for each spell id (src/data/spells.ts). */
+export const WC3_SPELL_ICONS: Record<string, string> = {
+  gauss: 'ReplaceableTextures/CommandButtons/BTNManaBurn.blp',
+  frag: 'ReplaceableTextures/CommandButtons/BTNMortarTeam.blp',
+  flame: 'ReplaceableTextures/CommandButtons/BTNBreathOfFire.blp',
+  mines: 'ReplaceableTextures/CommandButtons/BTNGoblinLandMine.blp',
+  yamato: 'ReplaceableTextures/CommandButtons/BTNStormBolt.blp',
+  matrix: 'ReplaceableTextures/CommandButtons/BTNDivineIntervention.blp',
+  turret: 'ReplaceableTextures/CommandButtons/BTNSummonWaterElemental.blp',
+  emp: 'ReplaceableTextures/CommandButtons/BTNThunderclap.blp',
+  irradiate: 'ReplaceableTextures/CommandButtons/BTNBlizzard.blp',
+  spines: 'ReplaceableTextures/CommandButtons/BTNDeathCoil.blp',
+  spores: 'ReplaceableTextures/CommandButtons/BTNPlagueCloud.blp',
+  bile: 'ReplaceableTextures/CommandButtons/BTNMeatWagon.blp',
+  brood: 'ReplaceableTextures/CommandButtons/BTNCarrionScarabs.blp',
+  scourge: 'ReplaceableTextures/CommandButtons/BTNLocustSwarm.blp',
+  acidpool: 'ReplaceableTextures/CommandButtons/BTNDeathAndDecay.blp',
+  spinenova: 'ReplaceableTextures/CommandButtons/BTNGlacier.blp',
+  lurker: 'ReplaceableTextures/CommandButtons/BTNImpale.blp',
+  glaive: 'ReplaceableTextures/CommandButtons/BTNCarrionSwarm.blp',
+  blades: 'ReplaceableTextures/CommandButtons/BTNCleavingAttack.blp',
+  photon: 'ReplaceableTextures/CommandButtons/BTNHeadhunter.blp',
+  storm: 'ReplaceableTextures/CommandButtons/BTNEarthquake.blp',
+  interceptors: 'ReplaceableTextures/CommandButtons/BTNWhirlwind.blp',
+  arc: 'ReplaceableTextures/CommandButtons/BTNChainLightning.blp',
+  prism: 'ReplaceableTextures/CommandButtons/BTNShockWave.blp',
+  purnova: 'ReplaceableTextures/CommandButtons/BTNWarStomp.blp',
+  scarab: 'ReplaceableTextures/CommandButtons/BTNDemolisher.blp',
+  psiaura: 'ReplaceableTextures/CommandButtons/BTNLiquidFire.blp',
+};
+
+/** Warcraft III item icons for the supply-cache modules (src/data/modules.ts). */
+export const WC3_ITEM_ICONS: Record<string, string> = {
+  m_dmg: 'ReplaceableTextures/CommandButtons/BTNClawsOfAttack.blp',
+  m_haste: 'ReplaceableTextures/CommandButtons/BTNGlove.blp',
+  m_armor: 'ReplaceableTextures/CommandButtons/BTNRingGreen.blp',
+  m_hp: 'ReplaceableTextures/CommandButtons/BTNPeriapt.blp',
+  m_regen: 'ReplaceableTextures/CommandButtons/BTNRingSkull.blp',
+  m_pick: 'ReplaceableTextures/CommandButtons/BTNAmulet.blp',
+  m_min: 'ReplaceableTextures/CommandButtons/BTNChestOfGold.blp',
+  m_area: 'ReplaceableTextures/CommandButtons/BTNMantleOfIntelligence.blp',
+  m_crit: 'ReplaceableTextures/CommandButtons/BTNOrbOfFire.blp',
+  m_move: 'ReplaceableTextures/CommandButtons/BTNBootsOfSpeed.blp',
+  m_leech: 'ReplaceableTextures/CommandButtons/BTNMaskOfDeath.blp',
+  m_react: 'ReplaceableTextures/CommandButtons/BTNTalisman.blp',
+  m_echo: 'ReplaceableTextures/CommandButtons/BTNWand.blp',
+  m_proj: 'ReplaceableTextures/CommandButtons/BTNSnazzyScroll.blp',
+  m_revive: 'ReplaceableTextures/CommandButtons/BTNAnkh.blp',
+  m_xel: 'ReplaceableTextures/CommandButtons/BTNHelmutPurple.blp',
+};

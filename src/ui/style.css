@@ -387,6 +387,7 @@ html.bw-menu .menu {
 .bwic { width: 36px; height: 34px; image-rendering: pixelated; display: block; }
 .slot .bwic { width: 100%; height: auto; }
 .card .ic .bwic, .dmgrow .bwic { display: inline-block; vertical-align: middle; }
+.bwic.wc3ic { image-rendering: auto; height: auto; aspect-ratio: 1; }
 .dmgrow .bwic { width: 24px; height: auto; }
 .perk .ic .bwic { display: inline-block; }
 h3 .bwic { display: inline-block; vertical-align: middle; width: 27px; height: auto; }

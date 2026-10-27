@@ -144,6 +144,9 @@ async function fillCache() {
       if (near.length) console.warn(`fetch-wc3:   ${p} -> maybe ${near.join(' | ')}`);
     }
   }
+  // keep the archive's file list so later (cached) runs can suggest names for icons that weren't found
+  const listfile = read('(listfile)');
+  if (listfile) writeFileSync(join(cacheDir, 'listfile.txt'), listfile);
   if (process.env.WC3_LIST_ICONS) {
     // handy when picking ability and item icons for src/wc3/*.ts
     const list = new TextDecoder().decode(read('(listfile)') ?? new Uint8Array());
