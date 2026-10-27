@@ -17,6 +17,18 @@ export interface BossState {
   windup: number; // telegraph time before a charge
   final: boolean;
   phase2: boolean; // below half health
+  /** Raid-style mechanics (soak, mark, nova, safe zones) run on their own clock. */
+  mechanicTimer: number;
+  /** Seconds alive; past the berserk timer the boss hits much harder. */
+  alive: number;
+  berserk: boolean;
+  /** Health fractions at which the boss calls in a wave of adds (the next one is first). */
+  addWaves: number[];
+  /** The spell being channelled (shown on the boss bar), and how long it has left. */
+  cast: string;
+  castT: number;
+  castMax: number;
+  castFn: (() => void) | null;
 }
 
 export interface Enemy {
@@ -220,6 +232,10 @@ export interface Telegraph {
   damage: number;
   onDone: (() => void) | null;
   friendly: boolean;
+  /** Overrides the red/gold colour (green for safe zones, purple for soak circles). */
+  color?: number;
+  /** Follows the hero until this many seconds before it goes off. */
+  followUntil?: number;
 }
 
 export interface ChainFx {
