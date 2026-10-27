@@ -27,10 +27,21 @@ async function renderInPage({ mdx, textures, opts }) {
   const W = window.war3model;
   const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const model = W.parseMDX(bytes(mdx).buffer);
+  // drop the team-colored hero glow under the feet: Brood War units have none
+  const glowTex = new Set(model.Textures.flatMap((t, i) => (t.ReplaceableId === 2 ? [i] : [])));
+  const glowMat = new Set(model.Materials.flatMap((m, i) => (m.Layers.some((l) => typeof l.TextureID === 'number' && glowTex.has(l.TextureID)) ? [i] : [])));
+  if (glowMat.size) {
+    const keep = model.Geosets.map((g) => !glowMat.has(g.MaterialID));
+    const remap = [];
+    let n = 0;
+    keep.forEach((k, i) => (remap[i] = k ? n++ : -1));
+    model.Geosets = model.Geosets.filter((_, i) => keep[i]);
+    model.GeosetAnims = (model.GeosetAnims ?? []).filter((a) => remap[a.GeosetId] >= 0).map((a) => ({ ...a, GeosetId: remap[a.GeosetId] }));
+  }
   const big = opts.cell * opts.ss;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = big;
-  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: true });
+  const gl = canvas.getContext('webgl2', { alpha: false, preserveDrawingBuffer: true, antialias: true });
   if (!gl) throw new Error('no WebGL2');
   const r = new W.ModelRenderer(model);
   r.initGL(gl);
@@ -80,6 +91,14 @@ async function renderInPage({ mdx, textures, opts }) {
   const proj = ortho(opts.halfExtent, 1, 4000);
   const light = [-900, -1400, 1800];
 
+  // WC3 blends glows and particles additively, which leaves no usable alpha. Render each view over
+  // black and over white instead: the difference gives coverage, the black pass gives colour.
+  const onBlack = new Uint8Array(big * big * 4);
+  const onWhite = new Uint8Array(big * big * 4);
+  const matte = document.createElement('canvas');
+  matte.width = matte.height = big;
+  const mctx = matte.getContext('2d');
+  const mimg = mctx.createImageData(big, big);
   const small = document.createElement('canvas');
   const half = document.createElement('canvas');
   const out = {};
@@ -113,12 +132,31 @@ async function renderInPage({ mdx, textures, opts }) {
         r.setLightPosition(rotVecZ(light, -facing));
         r.setLightColor([1, 1, 1]);
         gl.viewport(0, 0, big, big);
-        gl.clearColor(0, 0, 0, 0);
-        gl.depthMask(true);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        r.render(mul(view, rotZ(facing)), proj, {});
+        for (const [bg, buf] of [[0, onBlack], [1, onWhite]]) {
+          gl.clearColor(bg, bg, bg, 1);
+          gl.depthMask(true);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          r.render(mul(view, rotZ(facing)), proj, {});
+          gl.readPixels(0, 0, big, big, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        }
+        const px = mimg.data;
+        for (let y = 0; y < big; y++) {
+          const row = (big - 1 - y) * big * 4; // GL rows run bottom-up
+          for (let x = 0; x < big * 4; x += 4) {
+            const i = row + x, o = y * big * 4 + x;
+            const a = 255 - Math.min(255, Math.max(0, ((onWhite[i] - onBlack[i]) + (onWhite[i + 1] - onBlack[i + 1]) + (onWhite[i + 2] - onBlack[i + 2])) / 3));
+            px[o + 3] = a;
+            if (a) {
+              const k = 255 / a;
+              px[o] = Math.min(255, onBlack[i] * k);
+              px[o + 1] = Math.min(255, onBlack[i + 1] * k);
+              px[o + 2] = Math.min(255, onBlack[i + 2] * k);
+            } else px[o] = px[o + 1] = px[o + 2] = 0;
+          }
+        }
+        mctx.putImageData(mimg, 0, 0);
         // halve twice so thin details average out instead of shimmering
-        let src = canvas, size = big;
+        let src = matte, size = big;
         while (size > opts.cell) {
           size /= 2;
           half.width = half.height = size;

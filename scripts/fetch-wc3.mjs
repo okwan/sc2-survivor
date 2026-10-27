@@ -90,7 +90,7 @@ async function fillCache() {
   let todo = missingFromCache(wanted);
   if (!todo.length) {
     // the model list may be cached but a new model's textures not yet
-    todo = wanted.filter((p) => p.endsWith('.mdx') && existsSync(cached(p))).flatMap((p) => texturesOf(W, readFileSync(cached(p))));
+    todo = wanted.filter((p) => p.endsWith('.mdx') && existsSync(cached(p))).flatMap((p) => texturesOf(W, readFileSync(cached(p))).map(slash));
     todo = missingFromCache(todo);
     if (!todo.length) return console.log(`fetch-wc3: all ${wanted.length} files already cached in ${cacheDir}`);
   }
@@ -127,7 +127,7 @@ async function fillCache() {
     save(p, d);
     if (!d) missing.push(p);
     if (d && p.endsWith('.mdx')) {
-      for (const t of texturesOf(W, d)) {
+      for (const t of texturesOf(W, d).map(slash)) {
         const td = read(t);
         save(t, td);
         if (!td) missing.push(t);
@@ -153,10 +153,12 @@ async function fillCache() {
   for (const a of archives) a.close();
 }
 
+const slash = (p) => p.replace(/\\/g, '/');
+
 function texturesOf(W, mdx) {
   try {
     const m = W.parseMDX(new Uint8Array(mdx).slice().buffer);
-    return m.Textures.map((t) => t.Image.replace(/\\/g, '/')).filter((p) => p && /\.blp$/i.test(p));
+    return m.Textures.map((t) => t.Image).filter((p) => p && /\.blp$/i.test(p));
   } catch (e) {
     console.warn(`fetch-wc3: bad model: ${e.message}`);
     return [];
@@ -213,7 +215,10 @@ async function main() {
     if (!existsSync(cached(h.model))) continue;
     const mdx = readFileSync(cached(h.model));
     const textures = {};
-    for (const t of texturesOf(W, mdx)) if (existsSync(cached(t))) textures[t] = readFileSync(cached(t));
+    // keyed by the model's own (backslashed) path, which is how the renderer looks them up
+    for (const t of texturesOf(W, mdx)) if (existsSync(cached(slash(t)))) textures[t] = readFileSync(cached(slash(t)));
+    const lacking = texturesOf(W, mdx).filter((t) => !textures[t]);
+    if (lacking.length) console.warn(`fetch-wc3: ${id} has no ${lacking.join(', ')}`);
     jobs.push({ id, mdx, textures });
   }
   let sprites = {};
