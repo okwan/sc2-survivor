@@ -5,9 +5,11 @@ export const BW_UI = {
   wireframes: 'unit/wirefram/wirefram.grp',
   cursor: 'cursor/arrow.grp',
   menuBg: 'glue/palmm/backgnd.pcx',
+  /** in-game dialog borders, one per race */
+  dialog: { terran: 'dlgs/terran.grp', zerg: 'dlgs/zerg.grp', protoss: 'dlgs/protoss.grp' } as Record<string, string>,
 };
 
-export const BW_UI_FILES = [...Object.values(BW_UI.console), BW_UI.icons, BW_UI.wireframes, BW_UI.cursor, BW_UI.menuBg];
+export const BW_UI_FILES = [...Object.values(BW_UI.console), BW_UI.icons, BW_UI.wireframes, BW_UI.cursor, BW_UI.menuBg, ...Object.values(BW_UI.dialog)];
 
 /** Command card icon (frame of cmdicons.grp) for each spell, picked from the real sheet. */
 export const SPELL_ICONS: Record<string, number> = {
