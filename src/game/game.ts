@@ -532,8 +532,8 @@ export class Game {
 
   get xpNeeded(): number {
     const l = this.player.level - 1;
-    // steeper early: the old curve gave ~12 level-ups in the first minute, a card screen every 5 s
-    return Math.round(8 + l * 3 + Math.pow(l, 1.8) * 0.22);
+    // tuned with the denser swarms: a card every ~10 s early, level 10 near two minutes, then slower
+    return Math.round(10 + l * 6 + Math.pow(l, 1.8) * 0.4);
   }
 
   // ------------------------------------------------------------ enemies
@@ -2004,8 +2004,8 @@ export class Game {
       }
     }
     // regular spawns
-    // a little more pressure in the first minutes so the start isn't empty
-    const rate = (2.4 + m * 0.75 + m * m * 0.03) * (this.endless ? 1.5 : 1) * this.diff.spawn;
+    // crowds from the first second: survivors games are about mowing down swarms of weak enemies
+    const rate = (4.5 + m * 0.9 + m * m * 0.035) * (this.endless ? 1.5 : 1) * this.diff.spawn;
     // cap the backlog so a full map can't release hundreds of enemies in one frame
     this.spawnAcc = Math.min(this.spawnAcc + rate * dt, 12);
     let wave = z.waves[0];
@@ -2025,10 +2025,10 @@ export class Game {
       }
       const [x, y] = this.spawnPoint();
       const def = ENEMIES[id];
-      // small packs feel more like an RTS swarm
-      const pack = def.speed > 110 && Math.random() < 0.35 ? 3 : 1;
+      // fast fodder comes in packs, like an RTS swarm
+      const pack = def.speed > 110 && Math.random() < 0.5 ? 3 + Math.floor(Math.random() * 3) : 1;
       this.spawnAcc -= pack - 1;
-      for (let k = 0; k < pack; k++) this.spawnEnemy(def, x + k * 18, y + (k % 2) * 18);
+      for (let k = 0; k < pack; k++) this.spawnEnemy(def, x + (k % 3) * 20, y + Math.floor(k / 3) * 20);
     }
     // elites
     if (this.time >= this.nextElite) {
@@ -2259,7 +2259,9 @@ export class Game {
         // a charger's charge hits once, not on every contact tick
         e.contactCd = e.def.behavior === 'charger' ? 1.2 : 0.6;
         if (e.affixes.length && e.affixes.includes('vampiric')) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.08);
-        this.damagePlayer(e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
+        // the swarm nibbles early on and bites later, so the first minutes play as a power trip
+        const grace = e.boss || e.elite ? 1 : Math.min(1, 0.5 + this.time / 600);
+        this.damagePlayer((e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage) * grace, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
       }
       this.grid.insert(i, e.x, e.y);
     }
@@ -2470,7 +2472,7 @@ export class Game {
       const d2 = dx * dx + dy * dy;
       if (!g.pulled && d2 < pr2) g.pulled = true;
       if (g.pulled) {
-        g.speed = Math.min(1400, g.speed + 1800 * dt);
+        g.speed = Math.min(1800, g.speed + 3200 * dt);
         const d = Math.sqrt(d2) || 1;
         g.x += (dx / d) * g.speed * dt;
         g.y += (dy / d) * g.speed * dt;

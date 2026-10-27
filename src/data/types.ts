@@ -46,7 +46,7 @@ export function baseStats(): Stats {
     shieldRegen: 0,
     shieldDelay: 3,
     moveSpeed: 210,
-    pickupRange: 90,
+    pickupRange: 140,
     damage: 1,
     haste: 0,
     area: 1,
