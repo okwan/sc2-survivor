@@ -140,12 +140,17 @@ let anims: Record<string, { walk?: [number, number][] }> = {};
 const registry = new Map<string, BwSprite>();
 /** Every Brood War file currently available (player's own or bundled with the site). */
 let store = new Map<string, Uint8Array>();
-const LAZY = /\.(cv5|vx4|vr4)$|^maps\/|^unit\/thingy\/tileset\/|^sound\//; // tilesets, maps and their doodads: fetched per zone when a run starts
+const LAZY = /\.(cv5|vx4|vr4)$|^maps\/|^unit\/thingy\/tileset\/|^sound\/|^music\//; // tilesets, maps and their doodads: fetched per zone when a run starts
 type BwSource = 'local' | 'bundled' | null;
 let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
 export function bwStatus() {
   return status;
+}
+
+/** True when the site ships this file (bw/manifest.json). */
+export function bwBundled(path: string): boolean {
+  return bundledPaths.has(path);
 }
 
 /** A raw Brood War file if it is loaded. */

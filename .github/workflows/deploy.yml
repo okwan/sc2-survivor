@@ -24,6 +24,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # ffmpeg compresses StarCraft's soundtrack to MP3 in the fetch step
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
       - run: npm run build
       # Brood War sprites are downloaded at deploy time and served with the site; the repo holds none.
       - run: node scripts/fetch-bw.mjs dist
@@ -33,7 +35,7 @@ jobs:
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
       - if: github.ref != 'refs/heads/main'
         run: |
-          for f in dlgs/terran.grp dlgs/zerg.grp dlgs/protoss.grp tileset/platform.wpe; do echo "b64 $f $(base64 -w0 dist/bw/$f)"; done || true
+          for f in dlgs/tile.grp; do echo "b64 $f $(base64 -w0 dist/bw/$f)"; done || true
           which ffmpeg || echo "no ffmpeg"
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3

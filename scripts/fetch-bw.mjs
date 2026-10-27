@@ -368,6 +368,55 @@ function logIcons(read) {
   console.log('fetch-bw: icons ' + rows.join(' | '));
 }
 
+// ------------------------------------------------------------ music
+// The soundtrack isn't in the Brood War download above (its music\*.wav are sub-second stubs).
+// The Brood War CD's INSTALL.EXE is itself an MPQ holding the full tracks; we pull those out and
+// compress them to MP3 with ffmpeg so the site can stream them.
+const MUSIC_URL = process.env.BW_MUSIC_URL || 'https://archive.org/download/starcraft-expansion-set-brood-war/INSTALL.EXE';
+const TRACKS = ['title', 'terran1', 'terran2', 'terran3', 'zerg1', 'zerg2', 'zerg3', 'protoss1', 'protoss2', 'protoss3', 'tdefeat', 'zdefeat', 'pdefeat', 'trdyroom', 'zrdyroom', 'prdyroom'];
+
+async function buildMusic(MPQ, outDir, got) {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  } catch {
+    return console.warn('fetch-bw: no ffmpeg, skipping music');
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'bwm-'));
+  const cd = join(dir, 'install.exe');
+  console.log(`fetch-bw: downloading ${MUSIC_URL}`);
+  await download(MUSIC_URL, cd);
+  const a = await MPQ.open('/bw' + cd, 'r');
+  const wavs = [];
+  for (const t of TRACKS) {
+    const p = `music\\${t}.wav`;
+    if (!a.hasFile(p)) continue;
+    const f = a.openFile(p);
+    const d = f.read().slice();
+    f.close();
+    if (d.length < 1 << 20) continue; // a stub, like the ones in the main download
+    const wav = join(dir, `${t}.wav`);
+    writeFileSync(wav, d);
+    wavs.push([t, wav]);
+  }
+  a.close();
+  mkdirSync(join(outDir, 'bw', 'music'), { recursive: true });
+  // a few encoders at once
+  const queue = [...wavs];
+  const { execFile } = await import('node:child_process');
+  const run = (args) => new Promise((res, rej) => execFile('ffmpeg', args, (e) => (e ? rej(e) : res())));
+  await Promise.all(
+    [0, 1, 2, 3].map(async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        const [t, wav] = job;
+        const out = join(outDir, 'bw', 'music', `${t}.mp3`);
+        await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-q:a', '6', out]);
+        got.push(`music/${t}.mp3`);
+      }
+    }),
+  );
+  console.log(`fetch-bw: music ${wavs.map(([t]) => t).join(', ')} -> ${(got.filter((p) => p.startsWith('music/')).reduce((n, p) => n + statSync(join(outDir, 'bw', p)).size, 0) / 1e6).toFixed(1)} MB of MP3`);
+}
+
 async function main() {
   const src = await getSourceDir();
   if (!src) return console.warn('fetch-bw: no source available, shipping placeholder art only');
@@ -435,6 +484,11 @@ async function main() {
     console.warn(`fetch-bw: maps failed: ${e.stack || e}`);
   }
   for (const a of archives) a.close();
+  try {
+    await buildMusic(MPQ, outDir, got);
+  } catch (e) {
+    console.warn(`fetch-bw: music failed: ${e.message}`);
+  }
   if (!got.length) return console.warn('fetch-bw: found none of the sprite files');
   writeFileSync(join(outDir, 'bw', 'manifest.json'), JSON.stringify({ files: got, maps }));
   const missing = wanted.filter((p) => !got.includes(p));
