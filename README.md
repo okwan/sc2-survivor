@@ -45,6 +45,16 @@ Those are decoded in the browser (`src/bw/`) and kept in IndexedDB.
 
 To try it locally: `npm run build && node scripts/fetch-bw.mjs dist path/to/StarCraft && npx vite preview`.
 
+## WoW interface
+
+The menus and HUD use the real World of Warcraft 1.12 interface (dialog frames, red panel buttons, tooltips,
+the gryphon action bar, unit frames, round minimap, Friz Quadrata and Morpheus fonts, spell icons and the
+level-up sound). Nothing is in the repo: the deploy workflow runs `scripts/fetch-wow.mjs`, which downloads the
+1.12.1 installer from archive.org (override with the `WOW_ARCHIVE_URL` variable), unpacks it with `innoextract`,
+converts the BLP textures to PNG (`scripts/blp.mjs`) and writes them to `dist/wow/` with a manifest. The
+converted files are cached between runs in `.wow-cache`. Without them the game falls back to its StarCraft
+interface; add `?nowow` to the address to see that one.
+
 ## Tech
 
 - TypeScript + Vite + [PixiJS 8](https://pixijs.com/) (WebGL) for rendering

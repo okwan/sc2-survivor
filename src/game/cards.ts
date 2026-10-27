@@ -13,12 +13,45 @@ export type Card =
   | { kind: 'evolution'; id: string; def: SpellDef; evo: EvolutionDef; rarity: Rarity; key: string }
   | { kind: 'fallback'; id: 'minerals' | 'heal'; rarity: Rarity; key: string };
 
-/** Extra damage on a spell from the card's rarity. */
-export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.8];
+/**
+ * Spell cards no longer roll a random bonus: as in Azeroth Survivors their colour says what the card
+ * does. Every rank-up instead carries this flat damage bonus (what the old rolls averaged).
+ */
+const UPGRADE_DAMAGE = 0.07;
 
 /** Late game: a maxed spell can take this many mastery cards. */
 export const MAX_MASTERY = 5;
-const MASTERY_DAMAGE = 0.15;
+const MASTERY_DAMAGE = 0.22;
+
+/** A spell's rough rank-1 damage per second against a crowd, only for ranking a hero's spells. */
+function spellPower(def: SpellDef): number | null {
+  const b = def.base;
+  if (def.kind === 'barrier') return null;
+  const crowd = 1 + b.area / 50;
+  const reach =
+    def.kind === 'bolt' || def.kind === 'beam' ? b.count * (1 + Math.min(b.pierce, 3) * 0.5)
+    : def.kind === 'chain' ? b.count + b.pierce
+    : def.kind === 'orbit' || def.kind === 'summon' || def.kind === 'mine' ? b.count
+    : def.kind === 'lob' ? b.count * crowd
+    : crowd;
+  const ticks = def.kind === 'field' ? Math.max(1, b.duration) : 1;
+  return (b.damage * ticks * reach) / Math.max(0.2, b.cooldown);
+}
+
+/** Azeroth Survivors' rule for a new spell: the strongest third of the hero's spells Epic, the weakest Uncommon, the rest Rare. */
+function newSpellRarity(def: SpellDef): Rarity {
+  const mine = spellPower(def);
+  if (mine === null) return 2;
+  const all = SPELLS.filter((s) => s.race === def.race).map(spellPower).filter((v): v is number => v !== null);
+  const rank = all.filter((v) => v < mine).length / Math.max(1, all.length);
+  return rank >= 0.66 ? 3 : rank < 0.33 ? 1 : 2;
+}
+
+/** A rank-up is Uncommon, Epic when it adds a projectile or target, Legendary when it reaches the top rank. */
+function upgradeRarity(def: SpellDef, rank: number): Rarity {
+  if (rank + 1 >= MAX_RANK) return 4;
+  return spellStatsAtRank(def, rank + 1).count > spellStatsAtRank(def, rank).count ? 3 : 1;
+}
 
 export function rollRarity(luck: number): Rarity {
   const w = [60, 24, 10.5, 4, 1.5];
@@ -46,10 +79,13 @@ export function dealCards(g: Game, n: number): Card[] {
       pool.push({ key: `evo:${def.id}`, w: 6, make: () => ({ kind: 'evolution', id: def.id, def, evo, rarity: 4, key: `evo:${def.id}` }) });
     }
     if (s) {
-      if (s.rank < MAX_RANK) pool.push({ key, w: 1.5, make: (r) => ({ kind: 'upgrade', id: def.id, def, rarity: r, key }) });
-      else if ((s.mastery ?? 0) < MAX_MASTERY) pool.push({ key, w: 1.0, make: (r) => ({ kind: 'mastery', id: def.id, def, rarity: r, key }) });
+      if (s.rank < MAX_RANK) pool.push({ key, w: 1.5, make: () => ({ kind: 'upgrade', id: def.id, def, rarity: upgradeRarity(def, s.rank), key }) });
+      else if ((s.mastery ?? 0) < MAX_MASTERY) {
+        const last = (s.mastery ?? 0) + 1 >= MAX_MASTERY;
+        pool.push({ key, w: 1.0, make: () => ({ kind: 'mastery', id: def.id, def, rarity: last ? 3 : 2, key }) });
+      }
     } else if (g.spells.length < MAX_SPELLS) {
-      pool.push({ key, w: g.spells.length < 3 ? 1.6 : 1.0, make: (r) => ({ kind: 'spell', id: def.id, def, rarity: r, key }) });
+      pool.push({ key, w: g.spells.length < 3 ? 1.6 : 1.0, make: () => ({ kind: 'spell', id: def.id, def, rarity: newSpellRarity(def), key }) });
     }
   }
   for (const def of PASSIVES) {
@@ -82,6 +118,8 @@ export interface CardView {
   type: string;
   lines: string[];
   desc: string;
+  /** Rank now and the top rank, for the pips (spell upgrades only). */
+  ranks?: [number, number];
 }
 
 function fmtNum(k: keyof SpellStats, v: number): string {
@@ -93,32 +131,30 @@ export function describeCard(g: Game, c: Card): CardView {
   switch (c.kind) {
     case 'spell': {
       const st = spellStatsAtRank(c.def, 1);
-      const lines = [`Damage ${Math.round(st.damage * (1 + RARITY_SPELL_BONUS[c.rarity]))}`];
+      const lines = [`Damage ${Math.round(st.damage)}`];
       if (c.def.kind !== 'orbit' && c.def.kind !== 'aura') lines.push(`Cooldown ${fmtNum('cooldown', st.cooldown)}`);
-      if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
       return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: 'New Spell', lines, desc: c.def.desc };
     }
     case 'upgrade': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
-      const ranks = c.rarity >= 4 ? 2 : 1;
-      const to = Math.min(MAX_RANK, s.rank + ranks);
+      const to = Math.min(MAX_RANK, s.rank + 1);
       const a = spellStatsAtRank(c.def, s.rank);
       const b = spellStatsAtRank(c.def, to);
       const lines: string[] = [];
       for (const k of Object.keys(SPELL_STAT_LABELS) as (keyof SpellStats)[]) {
         if (Math.abs(a[k] - b[k]) > 1e-6) lines.push(`${SPELL_STAT_LABELS[k]} ${fmtNum(k, a[k])} → ${fmtNum(k, b[k])}`);
       }
-      if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
+      lines.push(`+${Math.round(UPGRADE_DAMAGE * 100)}% spell damage`);
       const evo = EVO_BY_SPELL[c.id];
       const hint = evo && !s.evo ? ` Evolves at rank ${MAX_RANK} with ${PASSIVES.find((p) => p.id === evo.passive)?.name ?? 'a passive'}.` : '';
-      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc + hint };
+      return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc + hint, ranks: [s.rank, MAX_RANK] };
     }
     case 'evolution': {
       return { title: c.evo.name, icon: c.evo.icon, type: `Evolution of ${c.def.name}`, lines: [c.evo.desc], desc: 'Evolves this spell for the rest of the run.' };
     }
     case 'mastery': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
-      const b = MASTERY_DAMAGE + RARITY_SPELL_BONUS[c.rarity];
+      const b = MASTERY_DAMAGE;
       return {
         title: c.def.name,
         icon: spellIcon(c.def.id, c.def.icon),
@@ -134,7 +170,7 @@ export function describeCard(g: Game, c: Card): CardView {
     }
     case 'fallback':
       return c.id === 'heal'
-        ? { title: 'Field Repair', icon: '🩹', type: 'Supply', lines: ['Restore 30% health'], desc: '' }
+        ? { title: 'Field Repair', icon: '🩹', type: 'Supply', lines: ['Restore all health'], desc: '' }
         : { title: 'Mineral Drop', icon: '💎', type: 'Supply', lines: ['+50 minerals'], desc: '' };
   }
 }
@@ -142,12 +178,12 @@ export function describeCard(g: Game, c: Card): CardView {
 export function applyCard(g: Game, c: Card) {
   switch (c.kind) {
     case 'spell':
-      g.learnSpell(c.id, RARITY_SPELL_BONUS[c.rarity]);
+      g.learnSpell(c.id, 0);
       break;
     case 'upgrade': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
-      s.rank = Math.min(MAX_RANK, s.rank + (c.rarity >= 4 ? 2 : 1));
-      s.bonus += RARITY_SPELL_BONUS[c.rarity];
+      s.rank = Math.min(MAX_RANK, s.rank + 1);
+      s.bonus += UPGRADE_DAMAGE;
       g.recomputeStats();
       break;
     }
@@ -161,7 +197,7 @@ export function applyCard(g: Game, c: Card) {
     case 'mastery': {
       const s = g.spells.find((x) => x.def.id === c.id)!;
       s.mastery = (s.mastery ?? 0) + 1;
-      s.bonus += MASTERY_DAMAGE + RARITY_SPELL_BONUS[c.rarity];
+      s.bonus += MASTERY_DAMAGE;
       g.recomputeStats();
       break;
     }
@@ -175,7 +211,7 @@ export function applyCard(g: Game, c: Card) {
       break;
     }
     case 'fallback':
-      if (c.id === 'heal') g.heal(g.stats.maxHp * 0.3);
+      if (c.id === 'heal') g.heal(g.stats.maxHp);
       else g.player.minerals += 50;
       break;
   }

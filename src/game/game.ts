@@ -4,7 +4,7 @@ import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
 import type { DailyDef } from '../data/daily';
 import { MODULES, type ModuleDef } from '../data/modules';
 import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
-import { ENEMIES, MIXED_ROSTER, SHAPE_INFO, ZONES, type BossDef, type BossMechanic, type EnemyDef, type ZoneDef } from '../data/enemies';
+import { ENEMIES, LADDER_STATS, MIXED_ROSTER, SHAPE_INFO, ZONES, ladderOrder, ladderWindow, type BossDef, type BossMechanic, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem, type LegendaryEffect } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import type { HeroDef } from '../data/heroes';
@@ -22,8 +22,7 @@ import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import { damp, hyp } from './math';
 import type { Input } from './input';
-import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
-import { RACE_UI } from '../bw/ui-files';
+import { bwIcon, dashIcon, spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 import { wc3AnimLength, wc3Frame, wc3Hero, type Wc3Sprite } from '../wc3/sprites';
 import { WC3_HERO_ATTACK_SOUNDS } from '../wc3/sounds';
@@ -51,6 +50,7 @@ const MAX_ENEMIES = 1400;
 const MAX_ALIVE = 650;
 const MAX_GEMS = 700;
 const DASH_UNLOCK = 5;
+const XP_RATE = 1.5; // experience per gem point (Azeroth Survivors uses 2; our denser swarms drop far more gems)
 const SLOT_NUKE = 7;
 const SLOT_FEEDBACK = 8;
 const SLOT_DASH = 9;
@@ -256,6 +256,8 @@ export class Game {
   private spritePool = new Map<Container, Sprite[]>();
 
   private spawnAcc = 0;
+  /** The whole mixed roster, weakest first, for the ladder window. */
+  private mixedOrder: string[] | null = null;
   private nextBoss = 0;
   private nextElite = 120; // later zones' elites (archons, hybrids) were killing fresh heroes at 1:30
   private nextSurge = 60;
@@ -551,24 +553,35 @@ export class Game {
   }
 
   get xpNeeded(): number {
-    const l = this.player.level - 1;
-    // tuned with the denser swarms: a card every ~10 s early, level 10 near two minutes, then slower
-    return Math.round(10 + l * 6 + Math.pow(l, 1.8) * 0.4);
+    // Azeroth Survivors' curve (Vampire Survivors'): cheap and linear, steeper past 20 and 40
+    const l = this.player.level;
+    return l < 20 ? 5 + (l - 1) * 10 : l < 40 ? 195 + (l - 20) * 13 : 455 + (l - 40) * 16;
   }
 
   // ------------------------------------------------------------ enemies
   /** Enemy health and damage multipliers at minute m. */
   private enemyScale(m: number) {
-    // harder zones ramp up to their full tier over the first ~70% of the run instead of starting there
-    // (starting at 20% of the tier still killed fresh heroes on Aiur and Ulnar inside two minutes)
-    const ramp = Math.min(1, 0.05 + (0.95 * m) / (this.zone.minutes * 0.7));
-    const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
+    // every zone is equally hard, as in Azeroth Survivors: difficulty comes from Normal/Hard/Brutal
+    const tier = this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1;
     // past minute 5 the swarm outgrows a coasting build: health and damage climb much faster
     const late = Math.max(0, m - 5);
     return {
       hp: tier * (1 + m * 0.16 + m * m * 0.012 + late * late * 0.035) * this.diff.hp,
       dmg: Math.pow(tier, 0.85) * (1 + m * 0.07 + late * 0.06) * this.diff.dmg,
     };
+  }
+
+  /**
+   * The run's clock on top of the tier ladder. Damage follows Azeroth Survivors (+90% by 15:00, on a
+   * ladder whose hits already grow from 2 to 44). Health keeps our own steeper clock: with talents,
+   * gear, evolutions and masteries our heroes outgrow theirs, and their +75% left the late swarm
+   * melting in one hit (bot runs reached level 150 taking no damage).
+   */
+  private ladderScale(m: number) {
+    const p = (m * 60) / VICTORY_SECS;
+    const endless = this.endless ? 1 + Math.max(0, m - VICTORY_SECS / 60) * 0.12 : 1;
+    // on top, +50% by 15:00: the late window spawns only heavy tiers, and bots still mowed them down
+    return { hp: this.enemyScale(m).hp * (1 + 0.5 * Math.min(1, p)), dmg: (1 + 0.9 * p) * endless * this.diff.dmg };
   }
 
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
@@ -597,7 +610,7 @@ export class Game {
     e.flash = 0;
     e.slow = 0;
     e.burnDps = e.burnTime = e.burnTick = 0;
-    e.contactCd = 0;
+    e.contactCd = 0.5; // the first swing lands half a second after contact
     e.shotTimer = (def.shotCd ?? 3) * Math.random();
     e.elite = !!opts.elite;
     e.lair = null;
@@ -612,10 +625,10 @@ export class Game {
     if (opts.boss) {
       const b = opts.boss;
       // final bosses were long, low-threat fights; they have less health and attack more often instead
-      const bossHp = b.hp * 1.4 * (opts.hpMult ?? 1) * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
+      const bossHp = b.hp * 1.4 * (opts.hpMult ?? 1) * (opts.final ? 0.65 : 1) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
       e.maxHp = bossHp;
       e.speed = b.speed;
-      e.damage = b.damage * Math.pow(this.zone.tier, 0.6) * this.diff.dmg;
+      e.damage = b.damage * this.diff.dmg;
       e.radius = radius;
       e.mass = 20;
       e.xp = 60;
@@ -625,12 +638,22 @@ export class Game {
       };
       this.bosses.push(e);
     } else {
-      e.maxHp = def.hp * hpScale * (opts.hpMult ?? 1);
+      // the swarm takes its numbers from its tier on the ladder; elites and guardians keep their own scaling
+      const rung = opts.elite ? null : LADDER_STATS[def.id];
+      if (rung) {
+        const ls = this.ladderScale(this.time / 60);
+        e.maxHp = rung.hp * ls.hp * (opts.hpMult ?? 1);
+        e.damage = rung.damage * ls.dmg;
+      } else {
+        e.maxHp = def.hp * hpScale * (opts.hpMult ?? 1);
+        e.damage = def.damage * dmgScale;
+      }
       e.speed = def.speed * (0.92 + Math.random() * 0.16) * (this.mutators.has('speed') ? 1.3 : 1);
-      e.damage = def.damage * dmgScale;
       e.radius = def.radius * (opts.scale ?? 1);
       e.mass = (def.mass ?? 1) * (opts.elite ? 4 : 1);
-      e.xp = def.xp * (opts.elite ? 12 : 1);
+      // experience stays the unit's own, flattened for the heavy tiers: once the ladder spawns only
+      // Carriers and Ultralisks, their full 15-30 would hand out a level every few seconds
+      e.xp = (rung ? Math.max(1, Math.round(Math.pow(def.xp, 0.7))) : def.xp) * (opts.elite ? 12 : 1);
       e.boss = null;
     }
     e.hp = e.maxHp;
@@ -873,7 +896,8 @@ export class Game {
     this.dropGem(e.x, e.y, e.xp * affixBonus);
     if (e.affixes.length) this.affixDeath(e);
     if (Math.random() < (e.elite ? 1 : 0.035)) this.dropPickup('mineral', e.x + 8, e.y, Math.ceil((e.elite ? 25 * affixBonus : 1 + Math.random() * 3) * this.stats.minerals));
-    if (Math.random() < 0.0025) this.dropPickup('medkit', e.x, e.y, 0);
+    // Azeroth Survivors drops food from 1.5% of kills: with heavier hits, health swings up and down
+    if (Math.random() < 0.015) this.dropPickup('medkit', e.x, e.y, 0);
     if (Math.random() < 0.0012) this.dropPickup('magnet', e.x, e.y, 0);
     const big = e.elite || !!e.boss;
     if (!this.bwDeath(e, big)) this.addFx(fx.soft(), e.x, e.y, e.def.color, 0.3, big ? 2.4 : 0.8, big ? 0.5 : 0.25, 0.8);
@@ -907,7 +931,7 @@ export class Game {
       this.shake(16);
       this.hitstop = 0.08;
       for (let k = 0; k < 12; k++) this.dropPickup('mineral', e.x + (Math.random() - 0.5) * 120, e.y + (Math.random() - 0.5) * 120, Math.ceil(6 * this.stats.minerals));
-      this.dropPickup('medkit', e.x, e.y + 30, 0);
+      this.dropPickup('medkit', e.x, e.y + 30, 1); // a boss's medkit is a full heal
       this.dropPickup('magnet', e.x, e.y - 30, 0);
       const rar = Math.min(4, rollRarity(this.stats.luck + this.diff.luck + 1) + 1) as Rarity;
       const loot = rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0));
@@ -1098,7 +1122,7 @@ export class Game {
           [6, 'Immolation burn', bwIcon('napalm', '🔥')],
           [SLOT_NUKE, 'Avatar', bwIcon('nuke', '☢️')],
           [SLOT_FEEDBACK, 'Ancestral Wrath', bwIcon('feedback', '💫')],
-          [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
+          [SLOT_DASH, this.race.dashName, dashIcon(this.race.id)],
           [SLOT_RACIAL, 'Flame Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
@@ -1596,13 +1620,30 @@ export class Game {
     this.raidWarnings.push(text);
   }
 
+  /**
+   * What spawns now: the zone's own wave (its hand-made order, so banelings still wait for minute 6)
+   * and the three mixed-roster tiers the ladder has reached.
+   */
+  private ladderPools() {
+    this.mixedOrder ??= ladderOrder(MIXED_ROSTER.flatMap((w) => w.pool.map(([id]) => id)));
+    const m = this.time / 60;
+    let wave = this.zone.waves[0];
+    for (const w of this.zone.waves) if (m >= w.from) wave = w;
+    return { wave: wave.pool, mixed: ladderWindow(this.mixedOrder, this.time / VICTORY_SECS) };
+  }
+
+  private pickWeighted(pool: [string, number][]): string {
+    let r = Math.random() * pool.reduce((a, [, w]) => a + w, 0);
+    for (const [id, w] of pool) if ((r -= w) <= 0) return id;
+    return pool[0][0];
+  }
+
   /** At each health threshold the boss calls in a wave of adds from the whole StarCraft roster. */
   private bossAdds(e: Enemy, b: BossState) {
     const p = this.player;
-    const m = this.time / 60;
-    const zi = Math.max(0, ZONES.findIndex((x) => x.id === this.zone.id));
-    const pool: string[] = [];
-    for (const w of MIXED_ROSTER) if (m + zi * 0.8 >= w.from) for (const [id] of w.pool) pool.push(id);
+    // the adds come from the tiers spawning now, the toughest one twice as often
+    const { mixed } = this.ladderPools();
+    const pool = [...mixed, mixed[mixed.length - 1]];
     const n = b.final ? 22 : 16;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
@@ -2208,36 +2249,23 @@ export class Game {
         this.endlessIdx++;
       }
     }
-    // regular spawns
-    // crowds from the first second: survivors games are about mowing down swarms of weak enemies
-    const rate = (4.5 + m * 0.9 + m * m * 0.035) * (this.endless ? 1.5 : 1) * this.diff.spawn;
-    // cap the backlog so a full map can't release hundreds of enemies in one frame
-    this.spawnAcc = Math.min(this.spawnAcc + rate * dt, 12);
-    let wave = z.waves[0];
-    for (const w of z.waves) if (m >= w.from) wave = w;
-    // half the spawns come from the whole StarCraft roster, unlocked tier by tier (sooner in later zones)
-    const zi = Math.max(0, ZONES.findIndex((x) => x.id === z.id));
-    const mixed: [string, number][] = [];
-    for (const w of MIXED_ROSTER) if (m + zi * 0.8 >= w.from) mixed.push(...w.pool);
-    while (this.spawnAcc >= 1) {
-      this.spawnAcc -= 1;
-      if (this.enemyCount >= MAX_ALIVE) break;
-      const pool = Math.random() < 0.5 ? wave.pool : mixed;
-      let r = Math.random() * pool.reduce((a, [, w]) => a + w, 0);
-      let id = pool[0][0];
-      for (const [eid, w] of pool) {
-        r -= w;
-        if (r <= 0) {
-          id = eid;
-          break;
-        }
+    // regular spawns, as Azeroth Survivors keeps them: a set number alive, topped up every 0.12 s,
+    // drawn from three neighbouring tiers that climb every 30 s. Their 14 at the start felt empty on
+    // our wider view, so ours opens at 36 and reaches their cap of 220 by 12:30.
+    const { wave, mixed } = this.ladderPools();
+    this.spawnAcc -= dt;
+    if (this.spawnAcc <= 0) {
+      this.spawnAcc = 0.12;
+      const target = Math.min(220, 36 + (this.time / VICTORY_SECS) * 220) * (this.endless ? 1.5 : 1) * this.diff.spawn;
+      let n = Math.min(4, Math.ceil((target - this.enemyCount) / 6));
+      while (n-- > 0 && this.enemyCount < MAX_ALIVE) {
+        // half the swarm is the zone's own, half the whole StarCraft roster
+        const def = ENEMIES[Math.random() < 0.5 ? this.pickWeighted(wave) : mixed[Math.floor(Math.random() * mixed.length)]];
+        const [x, y] = this.spawnPoint();
+        // fast fodder comes in packs, like an RTS swarm
+        const pack = def.speed > 110 && Math.random() < 0.5 ? 3 + Math.floor(Math.random() * 3) : 1;
+        for (let k = 0; k < pack; k++) this.spawnEnemy(def, x + (k % 3) * 20, y + Math.floor(k / 3) * 20);
       }
-      const [x, y] = this.spawnPoint();
-      const def = ENEMIES[id];
-      // fast fodder comes in packs, like an RTS swarm
-      const pack = def.speed > 110 && Math.random() < 0.5 ? 3 + Math.floor(Math.random() * 3) : 1;
-      this.spawnAcc -= pack - 1;
-      for (let k = 0; k < pack; k++) this.spawnEnemy(def, x + (k % 3) * 20, y + Math.floor(k / 3) * 20);
     }
     // elites
     if (this.time >= this.nextElite) {
@@ -2249,8 +2277,9 @@ export class Game {
     // surges: a ring of enemies closing in
     if (this.time >= this.nextSurge) {
       this.nextSurge += 60;
-      const def = ENEMIES[wave.pool[0][0]];
-      const n = Math.min(70, 24 + Math.floor(m * 4));
+      // the weakest tier spawning right now, as many as Azeroth Survivors' rings (28, growing to 88)
+      const def = ENEMIES[wave[0][0]];
+      const n = Math.min(90, 28 + Math.floor((this.time / VICTORY_SECS) * 60));
       const r = Math.max(this.app.screen.width, this.app.screen.height) / this.zoom * 0.6;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
@@ -2466,11 +2495,12 @@ export class Game {
       const cr = e.radius + 14;
       if (d < cr && e.contactCd <= 0) {
         // a charger's charge hits once, not on every contact tick
-        e.contactCd = e.boss ? 1 : e.def.behavior === 'charger' ? 1.2 : 0.6;
+        // one heavy swing every 1.3 s (a boss every 1 s), as in Azeroth Survivors, not a stream of nibbles
+        e.contactCd = e.boss ? 1 : 1.3;
         if (e.affixes.length && e.affixes.includes('vampiric')) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.08);
-        // the swarm nibbles early on and bites later, so the first minutes play as a power trip
         // a boss's body is huge now; its mechanics are the threat, not bumping into it
-        const grace = e.boss ? 0.5 : e.elite ? 1 : Math.min(1, 0.5 + this.time / 600);
+        // (the ladder already makes the first minutes' hits tiny, so the swarm needs no early grace)
+        const grace = e.boss ? 0.5 : 1;
         this.damagePlayer((e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage) * grace, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
       }
       this.grid.insert(i, e.x, e.y);
@@ -2691,7 +2721,7 @@ export class Game {
         g.x += (dx / d) * g.speed * dt;
         g.y += (dy / d) * g.speed * dt;
         if (d < 18) {
-          p.xp += g.value * this.stats.xpGain;
+          p.xp += g.value * XP_RATE * this.stats.xpGain;
           sfx('pickup');
           this.release(this.layers.pickups, g.sprite);
           this.gems[i] = this.gems[this.gems.length - 1];
@@ -2842,7 +2872,7 @@ export class Game {
         sfx('pickup');
         break;
       case 'medkit':
-        this.heal(this.stats.maxHp * 0.3);
+        this.heal(this.stats.maxHp * (k.value >= 1 ? 1 : 0.25));
         this.floatText(p.x, p.y - 30, '+HP', 0x60ff60, 0.7);
         break;
       case 'magnet':

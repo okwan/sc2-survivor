@@ -9,10 +9,12 @@ import { currentHero, save } from './meta/save';
 import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { applyBwChrome } from './bw/ui';
+import { applyWowChrome, initWow } from './wow/ui';
 import { initWc3, loadWc3Hero, wc3HeroIconUrl } from './wc3/sprites';
 import { Hud } from './ui/hud';
 import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
+import './ui/wow.css';
 
 async function boot() {
   const app = new Application();
@@ -28,7 +30,8 @@ async function boot() {
   });
   document.getElementById('app')!.appendChild(app.canvas);
   initTextures(app.renderer);
-  await Promise.all([initBw(), initWc3()]);
+  await Promise.all([initBw(), initWc3(), initWow()]);
+  await applyWowChrome();
   applyBwChrome();
   prefetchTerrain(ZONES.map((z) => z.id));
   setVolume(save.settings.volume);

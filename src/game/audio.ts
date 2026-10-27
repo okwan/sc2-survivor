@@ -2,6 +2,7 @@ import { bwBundled, bwFile, fetchInto } from '../bw/assets';
 import { BW_SOUND_FILES, BW_SOUNDS } from '../bw/sounds';
 import { WC3_SOUND_FILES } from '../wc3/sounds';
 import { wc3SoundUrl } from '../wc3/sprites';
+import { wowSound } from '../wow/ui';
 
 /**
  * Sound effects: StarCraft's own sounds when the site ships them (src/bw/sounds.ts), otherwise a
@@ -184,6 +185,10 @@ export function unlockAudio() {
   const c = ensure();
   if (c && c.state === 'suspended') void c.resume();
   loadSamples();
+  for (const names of Object.values(WOW_UI)) {
+    const url = names.map(wowSound).find(Boolean);
+    if (url) loadWowSound(url);
+  }
   if (music && music.paused && playlist.length) void music.play().catch(() => {});
 }
 
@@ -216,12 +221,49 @@ function noise(dur: number, gain: number, freq: number) {
   s.stop(c.currentTime + dur);
 }
 
+/** Interface sounds the WoW client provides, used when its files are deployed. */
+const WOW_UI: Partial<Record<Sfx, string[]>> = {
+  level: ['LevelUp'],
+  select: ['iUiMainMenuButtonA'],
+  win: ['iQuestComplete'],
+};
+const wowBufs = new Map<string, AudioBuffer | null>();
+
+function loadWowSound(url: string) {
+  if (wowBufs.has(url) || !ctx) return;
+  wowBufs.set(url, null);
+  const c = ctx;
+  fetch(url)
+    .then((r) => r.arrayBuffer())
+    .then((a) => c.decodeAudioData(a))
+    .then((b) => wowBufs.set(url, b))
+    .catch(() => {});
+}
+
+/** Plays the WoW interface sound for `name`; false (and starts loading it) when it isn't ready. */
+function wowSample(name: Sfx): boolean {
+  const url = WOW_UI[name]?.map(wowSound).find(Boolean);
+  if (!url || !ctx || !master) return false;
+  const buf = wowBufs.get(url);
+  if (!buf) {
+    loadWowSound(url);
+    return false;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = 0.8;
+  src.connect(g).connect(master);
+  src.start();
+  return true;
+}
+
 export function sfx(name: Sfx) {
   if (!ctx || volume <= 0) return;
   const now = ctx.currentTime;
   if ((last[name] ?? -1) + MIN_GAP[name] > now) return;
   last[name] = now;
-  if (sample(`${name}:${race}`) || sample(name)) return;
+  if (wowSample(name) || sample(`${name}:${race}`) || sample(name)) return;
   switch (name) {
     case 'shoot': tone('square', 900, 300, 0.05, 0.05); break;
     case 'hit': tone('triangle', 300, 120, 0.05, 0.06); break;
