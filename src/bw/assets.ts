@@ -3,6 +3,7 @@ import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
 import { BW_TERRAIN_FILES, terrainFilesFor, terrainTexture } from './terrain';
 import { BW_UI_FILES } from './ui-files';
+import { MapGround, mapTilesetFiles, parseMapJson, type BwMap } from './map';
 import { normalizePath, readZip } from './zip';
 
 /**
@@ -124,7 +125,7 @@ export interface BwSprite {
 const registry = new Map<string, BwSprite>();
 /** Every Brood War file currently available (player's own or bundled with the site). */
 let store = new Map<string, Uint8Array>();
-const LAZY = /\.(cv5|vx4|vr4)$/; // big tileset files, fetched per zone when a run starts
+const LAZY = /\.(cv5|vx4|vr4|json)$|^unit\/thingy\/tileset\//; // tilesets, maps and their doodads: fetched per zone when a run starts
 type BwSource = 'local' | 'bundled' | null;
 let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
@@ -361,13 +362,17 @@ export async function initBw(): Promise<void> {
 }
 
 let bundledPaths = new Set<string>();
+/** zone -> tileset of the real map the site ships for it */
+let bundledMaps: Record<string, string> = {};
+const maps = new Map<string, BwMap>();
 
 async function loadBundled() {
   try {
     const res = await fetch('bw/manifest.json');
     if (!res.ok) return;
-    const { files: paths } = (await res.json()) as { files: string[] };
+    const { files: paths, maps: zoneMaps } = (await res.json()) as { files: string[]; maps?: Record<string, string> };
     bundledPaths = new Set(paths);
+    bundledMaps = zoneMaps ?? {};
     const got = new Map<string, Uint8Array>();
     await Promise.all(
       paths.filter((p) => !LAZY.test(p)).map(async (p) => {
@@ -381,11 +386,9 @@ async function loadBundled() {
   }
 }
 
-/** Fetches the tileset files a zone needs if the site ships them and they aren't loaded yet. */
-export async function ensureZoneFiles(zoneId: string): Promise<void> {
-  const need = terrainFilesFor(zoneId).filter((p) => !store.has(p) && bundledPaths.has(p));
+async function fetchInto(paths: string[]) {
   await Promise.all(
-    need.map(async (p) => {
+    paths.filter((p) => !store.has(p) && bundledPaths.has(p)).map(async (p) => {
       try {
         const r = await fetch('bw/' + p);
         if (r.ok) store.set(p, new Uint8Array(await r.arrayBuffer()));
@@ -396,9 +399,63 @@ export async function ensureZoneFiles(zoneId: string): Promise<void> {
   );
 }
 
+/** Fetches what a zone needs (its real map, tileset and doodads) if the site ships them and they aren't loaded yet. */
+export async function ensureZoneFiles(zoneId: string): Promise<void> {
+  const set = bundledMaps[zoneId];
+  if (set && !maps.has(zoneId)) {
+    try {
+      const r = await fetch(`bw/maps/${zoneId}.json`);
+      if (r.ok) maps.set(zoneId, parseMapJson(await r.json()));
+    } catch {
+      /* fall back to the zone's tile pattern */
+    }
+  }
+  const m = maps.get(zoneId);
+  if (m) await fetchInto([...mapTilesetFiles(m.set), ...m.images, ...m.images.map((p) => DOODAD_SHADOW.get(p) ?? '')]);
+  else await fetchInto(terrainFilesFor(zoneId));
+}
 /** Starts downloading every zone's tileset in the background so runs start instantly. */
 export function prefetchTerrain(zoneIds: string[]) {
   zoneIds.reduce((p, z) => p.then(() => ensureZoneFiles(z)), Promise.resolve());
+}
+
+/** The zone's real StarCraft map with its ground renderer, when the map and its tileset are loaded. */
+export function bwMap(zoneId: string): MapGround | null {
+  const m = maps.get(zoneId);
+  if (!m) return null;
+  try {
+    return new MapGround(m, store);
+  } catch {
+    return null;
+  }
+}
+
+const DOODAD_SHADOW = new Map(Object.values(BW_DOODADS).flat().filter((d): d is [string, string] => !!d[1]));
+const mapSprites = new Map<string, BwSprite | null>();
+const palIds = new WeakMap<Uint8Array, number>();
+let palCount = 0;
+
+/** A map doodad (frame 0) in its tileset's palette, plus its shadow if we know it. */
+export function mapDoodad(path: string, pal: Uint8Array): { img: BwSprite; shadow: BwSprite | null } | null {
+  const get = (p: string, shadow: boolean) => {
+    if (!palIds.has(pal)) palIds.set(pal, palCount++);
+    const key = `${p}@${palIds.get(pal)}`;
+    if (!mapSprites.has(key)) {
+      const buf = store.get(p);
+      let spr: BwSprite | null = null;
+      try {
+        spr = buf ? buildOne(buf, pal, 1, shadow) : null;
+      } catch {
+        spr = null;
+      }
+      mapSprites.set(key, spr);
+    }
+    return mapSprites.get(key)!;
+  };
+  const img = get(path, false);
+  if (!img) return null;
+  const sh = DOODAD_SHADOW.get(path);
+  return { img, shadow: sh ? get(sh, true) : null };
 }
 
 /** The zone's Brood War ground texture, or null to use the procedural one. */

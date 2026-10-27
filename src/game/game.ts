@@ -6,7 +6,8 @@ import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
-import { bwDoodads, bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
+import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, type BwSprite } from '../bw/assets';
+import { mapStart, type MapGround } from '../bw/map';
 import { sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
@@ -16,7 +17,7 @@ import type { Input } from './input';
 import { spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
-const WORLD = 4000; // half-size: world spans -WORLD..WORLD
+const WORLD = 4000; // half-size of the arena when there is no real map: -WORLD..WORLD
 const MAX_ENEMIES = 1400;
 const MAX_ALIVE = 650;
 const MAX_GEMS = 700;
@@ -115,6 +116,16 @@ export class Game {
   shakeAmt = 0;
   camX = 0;
   camY = 0;
+  /** The real StarCraft map under the arena, if loaded. World (0, 0) is the player's start location. */
+  mapGround: MapGround | null = null;
+  /** Map pixel of world (0, 0). */
+  mapOx = 0;
+  mapOy = 0;
+  /** Playable area in world coordinates. */
+  bx0 = -WORLD;
+  by0 = -WORLD;
+  bx1 = WORLD;
+  by1 = WORLD;
 
   player: Player;
   stats: Stats = baseStats();
@@ -185,7 +196,16 @@ export class Game {
     this.flags = tb.flags;
     this.talentMods = tb.stats;
     this.spellMods = tb.spells;
-    this.grid = new SpatialGrid(-WORLD - 200, -WORLD - 200, WORLD * 2 + 400, WORLD * 2 + 400, 80, MAX_ENEMIES);
+    this.mapGround = bwMap(zone.id);
+    if (this.mapGround) {
+      const m = this.mapGround.map;
+      [this.mapOx, this.mapOy] = mapStart(m);
+      this.bx0 = -this.mapOx;
+      this.by0 = -this.mapOy;
+      this.bx1 = m.w * 32 - this.mapOx;
+      this.by1 = m.h * 32 - this.mapOy;
+    }
+    this.grid = new SpatialGrid(this.bx0 - 200, this.by0 - 200, this.bx1 - this.bx0 + 400, this.by1 - this.by0 + 400, 80, MAX_ENEMIES);
     this.player = {
       x: 0, y: 0, hp: 1, shield: 0, barrier: 0, barrierTime: 0, level: 1, xp: 0,
       minerals: perkLevel('minerals') * 40, kills: 0, facing: 0, lastHit: -10, invuln: 0,
@@ -229,33 +249,68 @@ export class Game {
   // ------------------------------------------------------------ scene
   private buildScene() {
     const z = this.zone;
-    const bwGround = bwTerrain(z.id);
+    const mg = this.mapGround;
+    const bwGround = mg ? null : bwTerrain(z.id);
     this.ground = new TilingSprite({ texture: bwGround ?? groundTexture(z.ground[0], z.ground[1], z.doodad), width: this.app.screen.width, height: this.app.screen.height });
+    this.ground.visible = !mg;
     this.root.addChild(this.ground);
     this.root.addChild(this.world);
+    if (mg) {
+      mg.container.position.set(-this.mapOx, -this.mapOy);
+      this.world.addChild(mg.container);
+    }
     for (const l of Object.values(this.layers)) this.world.addChild(l);
     this.world.addChild(this.gfx);
     this.layers.fx.blendMode = 'add';
 
-    // arena border
+    // arena border, and darkness outside it
+    const { bx0, by0, bx1, by1 } = this;
+    const bw = bx1 - bx0;
+    const bh = by1 - by0;
     const border = new Graphics();
-    border.rect(-WORLD, -WORLD, WORLD * 2, WORLD * 2).stroke({ width: 12, color: 0xff3030, alpha: 0.35 });
-    border.rect(-WORLD - 2000, -WORLD - 2000, WORLD * 2 + 4000, 2000).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(-WORLD - 2000, WORLD, WORLD * 2 + 4000, 2000).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(-WORLD - 2000, -WORLD, 2000, WORLD * 2).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(WORLD, -WORLD, 2000, WORLD * 2).fill({ color: 0x000000, alpha: 0.6 });
+    if (!mg) border.rect(bx0, by0, bw, bh).stroke({ width: 12, color: 0xff3030, alpha: 0.35 });
+    const out = mg ? 1 : 0.6;
+    border.rect(bx0 - 2000, by0 - 2000, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
+    border.rect(bx0 - 2000, by1, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
+    border.rect(bx0 - 2000, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
+    border.rect(bx1, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
     this.layers.ground.addChild(border);
+
+    const addProp = (tex: Texture, x: number, y: number) => {
+      const s = new Sprite(tex);
+      s.anchor.set(0.5);
+      s.position.set(x, y);
+      this.layers.ground.addChild(s);
+      this.props.push(s);
+    };
+    if (mg) {
+      // the map's own doodads, mineral fields and geysers where the map maker put them
+      const m = mg.map;
+      const placed: [number, number, Texture][] = [];
+      for (const [k, x, y] of m.doodads) {
+        const d = mapDoodad(m.images[k], mg.palette);
+        if (!d) continue;
+        if (d.shadow) placed.push([x - this.mapOx, y - this.mapOy - 0.5, d.shadow.frames[0]]);
+        placed.push([x - this.mapOx, y - this.mapOy, d.img.frames[0]]);
+      }
+      const mins = (['prop:min1', 'prop:min2', 'prop:min3'] as const).map((k) => bwSprite(k));
+      for (const [x, y, kind] of m.minerals) {
+        const b = mins[kind] ?? mins[0];
+        if (b) placed.push([x - this.mapOx, y - this.mapOy, b.frames[0]]);
+      }
+      const gey = bwSprite('prop:geyser');
+      if (gey) for (const [x, y] of m.geysers) placed.push([x - this.mapOx, y - this.mapOy, gey.frames[0]]);
+      placed.sort((a, b) => a[1] - b[1]);
+      for (const [x, y, t] of placed) addProp(t, x, y);
+    }
 
     // scattered props: Brood War mineral fields and geysers on BW ground, procedural ones otherwise
     const bwProps = bwGround ? (['prop:min1', 'prop:min2', 'prop:min3', 'prop:min1', 'prop:geyser'] as const).map((k) => bwSprite(k)).filter((b): b is BwSprite => !!b) : [];
     for (let i = 0; bwProps.length && i < 140; i++) {
       const b = bwProps[Math.floor(Math.random() * bwProps.length)];
-      const s = new Sprite(b.frames[0]);
-      s.anchor.set(0.5);
-      s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (Math.hypot(s.x, s.y) < 260) continue;
-      this.layers.ground.addChild(s);
-      this.props.push(s);
+      const x = (Math.random() * 2 - 1) * WORLD;
+      const y = (Math.random() * 2 - 1) * WORLD;
+      if (Math.hypot(x, y) >= 260) addProp(b.frames[0], x, y);
     }
     const dds = bwGround ? bwDoodads(z.id) : [];
     for (let i = 0; dds.length && i < 320; i++) {
@@ -263,32 +318,24 @@ export class Game {
       const x = (Math.random() * 2 - 1) * WORLD;
       const y = (Math.random() * 2 - 1) * WORLD;
       if (Math.hypot(x, y) < 260) continue;
-      for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) {
-        const s = new Sprite(b.frames[0]);
-        s.anchor.set(0.5);
-        s.position.set(x, y);
-        this.layers.ground.addChild(s);
-        this.props.push(s);
-      }
+      for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) addProp(b.frames[0], x, y);
     }
     const kinds = ['rock', 'rock', 'crystal', 'bones', 'pylon'] as const;
-    for (let i = 0; !bwProps.length && i < 520; i++) {
+    for (let i = 0; !mg && !bwProps.length && i < 520; i++) {
       const k = kinds[Math.floor(Math.random() * kinds.length)];
-      const s = new Sprite(propTexture(k, z.doodad, Math.floor(Math.random() * 6)));
-      s.anchor.set(0.5);
-      s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (Math.hypot(s.x, s.y) < 200) continue;
-      s.alpha = k === 'bones' ? 0.6 : 0.9;
-      this.layers.ground.addChild(s);
-      this.props.push(s);
+      const x = (Math.random() * 2 - 1) * WORLD;
+      const y = (Math.random() * 2 - 1) * WORLD;
+      if (Math.hypot(x, y) < 200) continue;
+      addProp(propTexture(k, z.doodad, Math.floor(Math.random() * 6)), x, y);
+      this.props[this.props.length - 1].alpha = k === 'bones' ? 0.6 : 0.9;
     }
 
     // guardian lairs
+    const far = Math.min(1600, Math.hypot(bw, bh) * 0.25); // not right next to the start
+    const lairAt: [number, number][] = [];
     for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2 + Math.random() * 0.5;
-      const d = 1600 + Math.random() * 1900; // not right next to the start
-      const x = Math.cos(a) * d;
-      const y = Math.sin(a) * d;
+      const [x, y] = this.randomPoint(far, lairAt, 700);
+      lairAt.push([x, y]);
       const spr = new Sprite(pickupTexture('lair'));
       spr.anchor.set(0.5);
       spr.position.set(x, y);
@@ -305,12 +352,13 @@ export class Game {
     }
 
     // supply caches
+    const cacheAt: [number, number][] = [];
     for (let i = 0; i < 14; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = 450 + Math.random() * 3200;
+      const [x, y] = this.randomPoint(450, cacheAt, 400);
+      cacheAt.push([x, y]);
       const spr = new Sprite(pickupTexture('cache'));
       spr.anchor.set(0.5);
-      spr.position.set(Math.cos(a) * d, Math.sin(a) * d);
+      spr.position.set(x, y);
       this.layers.pickups.addChild(spr);
       this.caches.push({ x: spr.x, y: spr.y, sprite: spr, opened: false, label: null });
     }
@@ -1224,9 +1272,10 @@ export class Game {
       p.y += my * s.moveSpeed * dt;
       p.facing = Math.atan2(my, mx);
     }
-    p.x = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.x));
-    p.y = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.y));
-    if (Math.max(Math.abs(p.x), Math.abs(p.y)) > WORLD - 300 && this.time >= this.edgeWarnAt) {
+    p.x = Math.max(this.bx0 + 20, Math.min(this.bx1 - 20, p.x));
+    p.y = Math.max(this.by0 + 20, Math.min(this.by1 - 20, p.y));
+    const edge = Math.min(p.x - this.bx0, this.bx1 - p.x, p.y - this.by0, this.by1 - p.y);
+    if (edge < 300 && this.time >= this.edgeWarnAt) {
       this.edgeWarnAt = this.time + 10;
       this.hooks.toast('Edge of the zone: you can get pinned here. Head back toward the middle.', '#ff9a6a');
     }
@@ -1413,6 +1462,25 @@ export class Game {
     }
   }
 
+  /** A random spot in the arena at least `minD` from the start and `gap` from the given points (best effort). */
+  private randomPoint(minD: number, others: [number, number][], gap: number): [number, number] {
+    const m = 150;
+    let best: [number, number] = [0, 0];
+    let bestScore = -Infinity;
+    for (let tries = 0; tries < 40; tries++) {
+      const x = this.bx0 + m + Math.random() * (this.bx1 - this.bx0 - m * 2);
+      const y = this.by0 + m + Math.random() * (this.by1 - this.by0 - m * 2);
+      const near = others.reduce((d, [ox, oy]) => Math.min(d, Math.hypot(x - ox, y - oy)), Infinity);
+      const score = Math.min(0, Math.hypot(x, y) - minD) * 4 + Math.min(0, near - gap);
+      if (score >= 0) return [x, y];
+      if (score > bestScore) {
+        bestScore = score;
+        best = [x, y];
+      }
+    }
+    return best;
+  }
+
   private spawnPoint(): [number, number] {
     const p = this.player;
     const hw = this.app.screen.width / 2 / this.zoom;
@@ -1422,10 +1490,10 @@ export class Game {
       const a = Math.random() * Math.PI * 2;
       const x = p.x + Math.cos(a) * r;
       const y = p.y + Math.sin(a) * r;
-      if (x > -WORLD && x < WORLD && y > -WORLD && y < WORLD) return [x, y];
+      if (x > this.bx0 && x < this.bx1 && y > this.by0 && y < this.by1) return [x, y];
     }
     const a = Math.random() * Math.PI * 2;
-    return [Math.max(-WORLD, Math.min(WORLD, p.x + Math.cos(a) * r)), Math.max(-WORLD, Math.min(WORLD, p.y + Math.sin(a) * r))];
+    return [Math.max(this.bx0, Math.min(this.bx1, p.x + Math.cos(a) * r)), Math.max(this.by0, Math.min(this.by1, p.y + Math.sin(a) * r))];
   }
 
   private updateEnemies(dt: number) {
@@ -1902,6 +1970,13 @@ export class Game {
     this.ground.height = H;
     this.ground.tileScale.set(z);
     this.ground.tilePosition.set(-this.camX * z + W / 2 + sx, -this.camY * z + H / 2 + sy);
+    if (this.mapGround) {
+      const hw = W / 2 / z;
+      const hh = H / 2 / z;
+      const cx = this.camX + this.mapOx;
+      const cy = this.camY + this.mapOy;
+      this.mapGround.update(cx - hw, cy - hh, cx + hw, cy + hh, this.time < 0.1 ? Infinity : 2);
+    }
 
     // hero
     const hs = this.heroSprite;
@@ -2042,6 +2117,7 @@ export class Game {
   }
 
   destroy() {
+    this.mapGround?.destroy();
     this.root.destroy({ children: true });
     this.input.joystickEl.style.display = 'none';
   }

@@ -244,7 +244,6 @@ export class Hud {
 /** Command card slots in console pixels: three columns, three rows. */
 const CARD_X = [505, 551, 597];
 const CARD_Y = [68, 110, 152];
-const WORLD = 4000;
 const MM = 128;
 
 /**
@@ -371,6 +370,22 @@ ${shield}
     if (this.frame++ % 4 === 0) this.drawMinimap();
   }
 
+  /** Minimap pixels per world pixel: the arena's long side fills the box. */
+  private mmScale() {
+    const g = this.game;
+    return MM / Math.max(g.bx1 - g.bx0, g.by1 - g.by0);
+  }
+
+  private mmX(x: number) {
+    const g = this.game;
+    return (x - g.bx0) * this.mmScale() + (MM - (g.bx1 - g.bx0) * this.mmScale()) / 2;
+  }
+
+  private mmY(y: number) {
+    const g = this.game;
+    return (y - g.by0) * this.mmScale() + (MM - (g.by1 - g.by0) * this.mmScale()) / 2;
+  }
+
   private minimapBackground(): HTMLCanvasElement {
     if (this.mmBg) return this.mmBg;
     const cv = document.createElement('canvas');
@@ -378,11 +393,18 @@ ${shield}
     const ctx = cv.getContext('2d')!;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, MM, MM);
-    const tex = bwTerrain(this.game.zone.id);
+    const g = this.game;
+    const mg = g.mapGround;
+    const tex = mg ? null : bwTerrain(g.zone.id);
     const src = tex?.source.resource as CanvasImageSource | undefined;
-    if (src && tex) {
+    if (mg) {
+      // the real map, one pixel per tile, letterboxed like the console does for non-square maps
+      const k = this.mmScale();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(mg.minimap(), this.mmX(g.bx0), this.mmY(g.by0), (g.bx1 - g.bx0) * k, (g.by1 - g.by0) * k);
+    } else if (src && tex) {
       // the ground repeats every texture-width world pixels
-      const step = (tex.width / (WORLD * 2)) * MM;
+      const step = tex.width * this.mmScale();
       ctx.imageSmoothingEnabled = true;
       for (let y = 0; y < MM; y += step) for (let x = 0; x < MM; x += step) ctx.drawImage(src, x, y, step, step);
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -395,29 +417,30 @@ ${shield}
   private drawMinimap() {
     const g = this.game;
     const ctx = this.mmCtx;
-    const k = MM / (WORLD * 2);
-    const mx = (x: number) => (x + WORLD) * k;
+    const k = this.mmScale();
+    const mx = (x: number) => this.mmX(x);
+    const my = (y: number) => this.mmY(y);
     ctx.drawImage(this.minimapBackground(), 0, 0);
     ctx.fillStyle = '#ffd34d';
-    for (const c of g.caches) if (!c.opened) ctx.fillRect(mx(c.x) - 1, mx(c.y) - 1, 3, 3);
+    for (const c of g.caches) if (!c.opened) ctx.fillRect(mx(c.x) - 1, my(c.y) - 1, 3, 3);
     ctx.fillStyle = '#ff9a3c';
-    for (const l of g.lairs) if (!l.cleared) ctx.fillRect(mx(l.x) - 2, mx(l.y) - 2, 4, 4);
+    for (const l of g.lairs) if (!l.cleared) ctx.fillRect(mx(l.x) - 2, my(l.y) - 2, 4, 4);
     ctx.fillStyle = '#e02020';
     for (let i = 0; i < g.enemyCount; i++) {
       const e = g.enemies[i];
-      ctx.fillRect(mx(e.x), mx(e.y), 1.5, 1.5);
+      ctx.fillRect(mx(e.x), my(e.y), 1.5, 1.5);
     }
     ctx.fillStyle = '#ff40ff';
-    for (const b of g.bosses) ctx.fillRect(mx(b.x) - 2.5, mx(b.y) - 2.5, 5, 5);
+    for (const b of g.bosses) ctx.fillRect(mx(b.x) - 2.5, my(b.y) - 2.5, 5, 5);
     const p = g.player;
     ctx.fillStyle = '#4fff6a';
-    ctx.fillRect(mx(p.x) - 1.5, mx(p.y) - 1.5, 3, 3);
+    ctx.fillRect(mx(p.x) - 1.5, my(p.y) - 1.5, 3, 3);
     // the camera's view, like the white box on the real minimap
     const hw = (window.innerWidth / 2 / g.zoom) * k;
     const hh = (window.innerHeight / 2 / g.zoom) * k;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(mx(g.camX) - hw) + 0.5, Math.round(mx(g.camY) - hh) + 0.5, Math.round(hw * 2), Math.round(hh * 2));
+    ctx.strokeRect(Math.round(mx(g.camX) - hw) + 0.5, Math.round(my(g.camY) - hh) + 0.5, Math.round(hw * 2), Math.round(hh * 2));
   }
 
   destroy() {

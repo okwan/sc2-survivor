@@ -130,6 +130,8 @@ async function boot() {
       hud.pauseBtn.onclick = pause;
       if (hud.dashBtn) hud.dashBtn.onpointerdown = () => (input.dashPressed = true);
       shell.setKeyHandler(runKeys);
+      const title = g.mapGround?.map.title;
+      if (title) hud.toast(title, '#9cf');
     },
     quitRun() {
       if (game) {
