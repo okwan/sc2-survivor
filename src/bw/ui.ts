@@ -1,7 +1,7 @@
 import { bwFile, bwPalette } from './assets';
 import { decodePcx } from './formats';
 import { drawGrpFrame, parseGrp, type GrpFile } from './grp';
-import { BW_UI, SPELL_ICONS } from './ui-files';
+import { BW_UI, ICONS, SPELL_ICONS } from './ui-files';
 
 /**
  * Brood War interface art for the DOM HUD and menus: the race consoles, command card icons,
@@ -192,7 +192,16 @@ export function applyBwChrome() {
 
 /** HTML for a spell's icon: the Brood War command icon when loaded, otherwise its emoji. */
 export function spellIcon(id: string, emoji: string): string {
-  const f = SPELL_ICONS[id];
-  const u = f !== undefined ? iconUrl(f) : null;
-  return u ? `<img class="bwic" src="${u}" alt="">` : emoji;
+  return frameIcon(SPELL_ICONS[id], emoji);
+}
+
+/** HTML for a passive, perk, talent tree or other icon by game id (see ICONS), or its emoji. */
+export function bwIcon(id: string, emoji: string): string {
+  return frameIcon(ICONS[id], emoji);
+}
+
+/** HTML for a command card frame, or the fallback. */
+export function frameIcon(frame: number | undefined, fallback: string): string {
+  const u = frame !== undefined ? iconUrl(frame) : null;
+  return u ? `<img class="bwic" src="${u}" alt="">` : fallback;
 }

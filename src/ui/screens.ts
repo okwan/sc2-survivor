@@ -1,6 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
-import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
+import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -212,7 +212,7 @@ export function showTalents(shell: Shell, race: RaceId) {
   for (const tr of TALENTS[race]) {
     const box = document.createElement('div');
     box.className = 'tree';
-    box.innerHTML = `<span class="spent">${pointsSpent(race, tr.id)}</span><h3>${tr.icon} ${tr.name}</h3><div class="blurb">${tr.blurb}</div>`;
+    box.innerHTML = `<span class="spent">${pointsSpent(race, tr.id)}</span><h3>${bwIcon(tr.id, tr.icon)} ${tr.name}</h3><div class="blurb">${tr.blurb}</div>`;
     const grid = document.createElement('div');
     grid.className = 'tgrid';
     for (const n of tr.nodes) {
@@ -309,7 +309,7 @@ export function showPerks(shell: Shell) {
     const cost = p.costs[lv];
     const d = document.createElement('div');
     d.className = 'perk';
-    d.innerHTML = `<div class="ic">${p.icon}</div><div class="grow"><b>${p.name}</b> <span class="lv">${lv}/${p.costs.length}</span><div class="muted" style="font-size:14px">${p.desc}</div></div>`;
+    d.innerHTML = `<div class="ic">${bwIcon(p.id, p.icon)}</div><div class="grow"><b>${p.name}</b> <span class="lv">${lv}/${p.costs.length}</span><div class="muted" style="font-size:14px">${p.desc}</div></div>`;
     const b = document.createElement('button');
     b.className = 'btn small';
     b.textContent = cost === undefined ? 'Maxed' : `⬢ ${cost}`;

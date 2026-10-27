@@ -318,6 +318,8 @@ html.bw-menu .menu {
 .slot .bwic { width: 100%; height: auto; }
 .card .ic .bwic, .dmgrow .bwic { display: inline-block; vertical-align: middle; }
 .dmgrow .bwic { width: 24px; height: auto; }
+.perk .ic .bwic { display: inline-block; }
+h3 .bwic { display: inline-block; vertical-align: middle; width: 27px; height: auto; }
 
 .hud.bwmode .vitals, .hud.bwmode .spells, .hud.bwmode .dash, .hud.bwmode .pausebtn { display: none; }
 .bwconsole {

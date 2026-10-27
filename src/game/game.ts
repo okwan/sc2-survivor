@@ -15,7 +15,8 @@ import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair,
 import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import type { Input } from './input';
-import { spellIcon } from '../bw/ui';
+import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
+import { RACE_UI } from '../bw/ui-files';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
 const WORLD = 4000; // half-size of the arena when there is no real map: -WORLD..WORLD
@@ -896,10 +897,10 @@ export class Game {
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
         ...[
-          [6, 'Napalm burn', '🔥'],
-          [SLOT_NUKE, 'Tactical Nuke', '☢️'],
-          [SLOT_FEEDBACK, 'Feedback', '💫'],
-          [SLOT_DASH, this.race.dashName, '💨'],
+          [6, 'Napalm burn', bwIcon('napalm', '🔥')],
+          [SLOT_NUKE, 'Tactical Nuke', bwIcon('nuke', '☢️')],
+          [SLOT_FEEDBACK, 'Feedback', bwIcon('feedback', '💫')],
+          [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
     });
