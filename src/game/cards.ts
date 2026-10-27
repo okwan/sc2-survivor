@@ -1,4 +1,4 @@
-import { spellIcon } from '../bw/ui';
+import { bwIcon, spellIcon } from '../bw/ui';
 import { EVO_BY_SPELL, type EvolutionDef } from '../data/evolutions';
 import { PASSIVES, type PassiveDef } from '../data/items';
 import { MAX_RANK, MAX_SPELLS, SPELLS, SPELL_BY_ID, SPELL_STAT_LABELS, spellStatsAtRank, type SpellDef, type SpellStats } from '../data/spells';
@@ -130,7 +130,7 @@ export function describeCard(g: Game, c: Card): CardView {
     case 'passive': {
       const v = c.def.noScale ? c.def.value : c.def.value * RARITY_MULT[c.rarity];
       const picks = g.passivePicks[c.def.id] ?? 0;
-      return { title: c.def.name, icon: c.def.icon, type: `Passive · picked ${picks} of ${c.def.maxPicks}`, lines: [fmtStat(c.def.stat, v)], desc: '' };
+      return { title: c.def.name, icon: bwIcon(c.def.id, c.def.icon), type: `Passive · picked ${picks} of ${c.def.maxPicks}`, lines: [fmtStat(c.def.stat, v)], desc: '' };
     }
     case 'fallback':
       return c.id === 'heal'

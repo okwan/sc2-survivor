@@ -1,4 +1,10 @@
-/** Tiny WebAudio synth for placeholder sound effects. Calls are throttled per sound. */
+import { bwFile, fetchInto } from '../bw/assets';
+import { BW_SOUND_FILES, BW_SOUNDS } from '../bw/sounds';
+
+/**
+ * Sound effects: StarCraft's own sounds when the site ships them (src/bw/sounds.ts), otherwise a
+ * tiny WebAudio synth. Calls are throttled per sound.
+ */
 type Sfx = 'shoot' | 'hit' | 'explode' | 'pickup' | 'level' | 'boss' | 'hurt' | 'dash' | 'select' | 'zap' | 'win' | 'lose';
 
 let ctx: AudioContext | null = null;
@@ -9,6 +15,65 @@ const MIN_GAP: Record<Sfx, number> = {
   shoot: 0.07, hit: 0.05, explode: 0.08, pickup: 0.04, level: 0.2, boss: 1, hurt: 0.25, dash: 0.2, select: 0.05, zap: 0.08, win: 1, lose: 1,
 };
 let noiseBuf: AudioBuffer | null = null;
+let race = 'terran';
+const samples = new Map<string, AudioBuffer>();
+let loading: Promise<void> | null = null;
+let voices = 0;
+const MAX_VOICES = 14;
+let lastDeath = -1;
+
+/** Which race's variant of shoot / level / dash sounds to play. */
+export function setSfxRace(r: string) {
+  race = r;
+}
+
+/** Downloads and decodes the bundled StarCraft sounds (once; retried if nothing was available yet). */
+function loadSamples() {
+  if (loading || !ctx) return;
+  const c = ctx;
+  loading = (async () => {
+    await fetchInto(BW_SOUND_FILES);
+    await Promise.all(
+      BW_SOUND_FILES.map(async (p) => {
+        const buf = bwFile(p);
+        if (!buf || samples.has(p)) return;
+        try {
+          samples.set(p, await c.decodeAudioData(buf.slice().buffer));
+        } catch {
+          /* not a playable wav */
+        }
+      }),
+    );
+    if (!samples.size) loading = null;
+  })();
+}
+
+/** Plays one of a sound's StarCraft samples; false when none is loaded. */
+function sample(key: string, gain = 1): boolean {
+  const list = BW_SOUNDS[key];
+  if (!list || !ctx || !master) return false;
+  const have = list.filter((p) => samples.has(p));
+  if (!have.length) return false;
+  if (voices >= MAX_VOICES) return true;
+  const src = ctx.createBufferSource();
+  src.buffer = samples.get(have[Math.floor(Math.random() * have.length)])!;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  src.connect(g).connect(master);
+  voices++;
+  src.onended = () => voices--;
+  src.start();
+  return true;
+}
+
+/** An enemy's StarCraft death sound (throttled so a big wave doesn't become noise). */
+export function deathSfx(shape: string) {
+  if (!ctx || volume <= 0) return;
+  const now = ctx.currentTime;
+  if (now - lastDeath < 0.06) return;
+  lastDeath = now;
+  sample(`death:${shape}`, 0.55);
+}
 
 export function setVolume(v: number) {
   volume = v;
@@ -34,6 +99,7 @@ function ensure(): AudioContext | null {
 export function unlockAudio() {
   const c = ensure();
   if (c && c.state === 'suspended') void c.resume();
+  loadSamples();
 }
 
 function tone(type: OscillatorType, f0: number, f1: number, dur: number, gain: number) {
@@ -70,6 +136,7 @@ export function sfx(name: Sfx) {
   const now = ctx.currentTime;
   if ((last[name] ?? -1) + MIN_GAP[name] > now) return;
   last[name] = now;
+  if (sample(`${name}:${race}`) || sample(name)) return;
   switch (name) {
     case 'shoot': tone('square', 900, 300, 0.05, 0.05); break;
     case 'hit': tone('triangle', 300, 120, 0.05, 0.06); break;

@@ -1,6 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
-import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
+import { applyBwChrome, bwIcon, resetBwUi, spellIcon } from '../bw/ui';
 import { DIFFICULTIES } from '../data/difficulty';
 import { MAX_MUTATORS, MUTATORS } from '../data/mutators';
 import { ZONES } from '../data/enemies';
@@ -83,7 +83,7 @@ export function showMenu(shell: Shell) {
     <div class="controls">${
       matchMedia('(pointer: coarse)').matches
         ? 'Drag anywhere to move · spells cast automatically · tap DASH from level 5 · tap a card to pick it'
-        : 'WASD / arrows to move · spells cast automatically · F / Space / right-click to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
+        : 'Right-click or WASD to move · spells cast automatically · F / Space to dash (level 5) · 1-3 pick cards · R reroll · B banish · Esc pause · mouse wheel zoom'
     }</div>
     <div class="footer">Each race unlocks battlefields on its own.<br>Fan project, not affiliated with Blizzard Entertainment. StarCraft is a trademark of Blizzard Entertainment.</div>`;
   menu.append(inner);
@@ -263,7 +263,7 @@ export function showTalents(shell: Shell, race: RaceId) {
   for (const tr of TALENTS[race]) {
     const box = document.createElement('div');
     box.className = 'tree';
-    box.innerHTML = `<span class="spent">${pointsSpent(race, tr.id)}</span><h3>${tr.icon} ${tr.name}</h3><div class="blurb">${tr.blurb}</div>`;
+    box.innerHTML = `<span class="spent">${pointsSpent(race, tr.id)}</span><h3>${bwIcon(tr.id, tr.icon)} ${tr.name}</h3><div class="blurb">${tr.blurb}</div>`;
     const grid = document.createElement('div');
     grid.className = 'tgrid';
     for (const n of tr.nodes) {
@@ -360,7 +360,7 @@ export function showPerks(shell: Shell) {
     const cost = p.costs[lv];
     const d = document.createElement('div');
     d.className = 'perk';
-    d.innerHTML = `<div class="ic">${p.icon}</div><div class="grow"><b>${p.name}</b> <span class="lv">${lv}/${p.costs.length}</span><div class="muted" style="font-size:14px">${p.desc}</div></div>`;
+    d.innerHTML = `<div class="ic">${bwIcon(p.id, p.icon)}</div><div class="grow"><b>${p.name}</b> <span class="lv">${lv}/${p.costs.length}</span><div class="muted" style="font-size:14px">${p.desc}</div></div>`;
     const b = document.createElement('button');
     b.className = 'btn small';
     b.textContent = cost === undefined ? 'Maxed' : `⬢ ${cost}`;

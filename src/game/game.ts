@@ -11,18 +11,21 @@ import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type Stat
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { glyph } from '../render/glyphs';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
-import { bwDoodads, bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
-import { sfx } from './audio';
+import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, walkFrame, type BwSprite } from '../bw/assets';
+import { mapStart, type MapGround } from '../bw/map';
+import { MapWalk } from '../bw/walk';
+import { deathSfx, setSfxRace, sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
 import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import { damp, hyp } from './math';
 import type { Input } from './input';
-import { spellIcon } from '../bw/ui';
+import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
+import { RACE_UI } from '../bw/ui-files';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
-const WORLD = 4000; // half-size: world spans -WORLD..WORLD
+const WORLD = 4000; // half-size of the arena when there is no real map: -WORLD..WORLD
 const MAX_ENEMIES = 1400;
 const MAX_ALIVE = 650;
 const MAX_GEMS = 700;
@@ -150,6 +153,21 @@ export class Game {
   shakeAmt = 0;
   camX = 0;
   camY = 0;
+  /** The real StarCraft map under the arena, if loaded. World (0, 0) is the player's start location. */
+  mapGround: MapGround | null = null;
+  /** Where ground units can go on the real map (cliffs, water and doodads block). */
+  walk: MapWalk | null = null;
+  /** The player's StarCraft-style move order (right-click), in world coordinates. */
+  moveTarget: [number, number] | null = null;
+  private dirBuf = new Float32Array(2);
+  /** Map pixel of world (0, 0). */
+  mapOx = 0;
+  mapOy = 0;
+  /** Playable area in world coordinates. */
+  bx0 = -WORLD;
+  by0 = -WORLD;
+  bx1 = WORLD;
+  by1 = WORLD;
 
   player: Player;
   stats: Stats = baseStats();
@@ -219,11 +237,26 @@ export class Game {
     this.hooks = hooks;
     this.zone = zone;
     this.race = RACE_DEFS[raceId];
+    setSfxRace(raceId);
     const tb = talentBonuses(raceId);
     this.flags = tb.flags;
     this.talentMods = tb.stats;
     this.spellMods = tb.spells;
-    this.grid = new SpatialGrid(-WORLD - 200, -WORLD - 200, WORLD * 2 + 400, WORLD * 2 + 400, 80, MAX_ENEMIES);
+    this.mapGround = bwMap(zone.id);
+    if (this.mapGround) {
+      const m = this.mapGround.map;
+      [this.mapOx, this.mapOy] = mapStart(m);
+      if (m.walk) {
+        this.walk = new MapWalk(m.w, m.h, m.walk, this.mapOx, this.mapOy);
+        const s = this.walk.nearestReachable(this.mapOx, this.mapOy, 40);
+        if (s) [this.mapOx, this.mapOy] = s;
+      }
+      this.bx0 = -this.mapOx;
+      this.by0 = -this.mapOy;
+      this.bx1 = m.w * 32 - this.mapOx;
+      this.by1 = m.h * 32 - this.mapOy;
+    }
+    this.grid = new SpatialGrid(this.bx0 - 200, this.by0 - 200, this.bx1 - this.bx0 + 400, this.by1 - this.by0 + 400, 80, MAX_ENEMIES);
     this.player = {
       x: 0, y: 0, hp: 1, shield: 0, barrier: 0, barrierTime: 0, level: 1, xp: 0,
       minerals: perkLevel('minerals') * 40, kills: 0, facing: 0, lastHit: -10, invuln: 0,
@@ -257,33 +290,68 @@ export class Game {
   // ------------------------------------------------------------ scene
   private buildScene() {
     const z = this.zone;
-    const bwGround = bwTerrain(z.id);
+    const mg = this.mapGround;
+    const bwGround = mg ? null : bwTerrain(z.id);
     this.ground = new TilingSprite({ texture: bwGround ?? groundTexture(z.ground[0], z.ground[1], z.doodad), width: this.app.screen.width, height: this.app.screen.height });
+    this.ground.visible = !mg;
     this.root.addChild(this.ground);
     this.root.addChild(this.world);
+    if (mg) {
+      mg.container.position.set(-this.mapOx, -this.mapOy);
+      this.world.addChild(mg.container);
+    }
     for (const l of Object.values(this.layers)) this.world.addChild(l);
     this.world.addChild(this.gfx);
     this.layers.fx.blendMode = 'add';
 
-    // arena border
+    // arena border, and darkness outside it
+    const { bx0, by0, bx1, by1 } = this;
+    const bw = bx1 - bx0;
+    const bh = by1 - by0;
     const border = new Graphics();
-    border.rect(-WORLD, -WORLD, WORLD * 2, WORLD * 2).stroke({ width: 12, color: 0xff3030, alpha: 0.35 });
-    border.rect(-WORLD - 2000, -WORLD - 2000, WORLD * 2 + 4000, 2000).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(-WORLD - 2000, WORLD, WORLD * 2 + 4000, 2000).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(-WORLD - 2000, -WORLD, 2000, WORLD * 2).fill({ color: 0x000000, alpha: 0.6 });
-    border.rect(WORLD, -WORLD, 2000, WORLD * 2).fill({ color: 0x000000, alpha: 0.6 });
+    if (!mg) border.rect(bx0, by0, bw, bh).stroke({ width: 12, color: 0xff3030, alpha: 0.35 });
+    const out = mg ? 1 : 0.6;
+    border.rect(bx0 - 2000, by0 - 2000, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
+    border.rect(bx0 - 2000, by1, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
+    border.rect(bx0 - 2000, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
+    border.rect(bx1, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
     this.layers.ground.addChild(border);
+
+    const addProp = (tex: Texture, x: number, y: number) => {
+      const s = new Sprite(tex);
+      s.anchor.set(0.5);
+      s.position.set(x, y);
+      this.layers.ground.addChild(s);
+      this.props.push(s);
+    };
+    if (mg) {
+      // the map's own doodads, mineral fields and geysers where the map maker put them
+      const m = mg.map;
+      const placed: [number, number, Texture][] = [];
+      for (const [k, x, y] of m.doodads) {
+        const d = mapDoodad(m.images[k], mg.palette);
+        if (!d) continue;
+        if (d.shadow) placed.push([x - this.mapOx, y - this.mapOy - 0.5, d.shadow.frames[0]]);
+        placed.push([x - this.mapOx, y - this.mapOy, d.img.frames[0]]);
+      }
+      const mins = (['prop:min1', 'prop:min2', 'prop:min3'] as const).map((k) => bwSprite(k));
+      for (const [x, y, kind] of m.minerals) {
+        const b = mins[kind] ?? mins[0];
+        if (b) placed.push([x - this.mapOx, y - this.mapOy, b.frames[0]]);
+      }
+      const gey = bwSprite('prop:geyser');
+      if (gey) for (const [x, y] of m.geysers) placed.push([x - this.mapOx, y - this.mapOy, gey.frames[0]]);
+      placed.sort((a, b) => a[1] - b[1]);
+      for (const [x, y, t] of placed) addProp(t, x, y);
+    }
 
     // scattered props: Brood War mineral fields and geysers on BW ground, procedural ones otherwise
     const bwProps = bwGround ? (['prop:min1', 'prop:min2', 'prop:min3', 'prop:min1', 'prop:geyser'] as const).map((k) => bwSprite(k)).filter((b): b is BwSprite => !!b) : [];
     for (let i = 0; bwProps.length && i < 140; i++) {
       const b = bwProps[Math.floor(Math.random() * bwProps.length)];
-      const s = new Sprite(b.frames[0]);
-      s.anchor.set(0.5);
-      s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (hyp(s.x, s.y) < 260) continue;
-      this.layers.ground.addChild(s);
-      this.props.push(s);
+      const x = (Math.random() * 2 - 1) * WORLD;
+      const y = (Math.random() * 2 - 1) * WORLD;
+      if (hyp(x, y) >= 260) addProp(b.frames[0], x, y);
     }
     const dds = bwGround ? bwDoodads(z.id) : [];
     for (let i = 0; dds.length && i < 320; i++) {
@@ -291,33 +359,25 @@ export class Game {
       const x = (Math.random() * 2 - 1) * WORLD;
       const y = (Math.random() * 2 - 1) * WORLD;
       if (hyp(x, y) < 260) continue;
-      for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) {
-        const s = new Sprite(b.frames[0]);
-        s.anchor.set(0.5);
-        s.position.set(x, y);
-        this.layers.ground.addChild(s);
-        this.props.push(s);
-      }
+      for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) addProp(b.frames[0], x, y);
     }
     const kinds = ['rock', 'rock', 'crystal', 'bones', 'pylon'] as const;
-    for (let i = 0; !bwProps.length && i < 520; i++) {
+    for (let i = 0; !mg && !bwProps.length && i < 520; i++) {
       const k = kinds[Math.floor(Math.random() * kinds.length)];
-      const s = new Sprite(propTexture(k, z.doodad, Math.floor(Math.random() * 6)));
-      s.anchor.set(0.5);
-      s.position.set((Math.random() * 2 - 1) * WORLD, (Math.random() * 2 - 1) * WORLD);
-      if (hyp(s.x, s.y) < 200) continue;
-      s.alpha = k === 'bones' ? 0.6 : 0.9;
-      this.layers.ground.addChild(s);
-      this.props.push(s);
+      const x = (Math.random() * 2 - 1) * WORLD;
+      const y = (Math.random() * 2 - 1) * WORLD;
+      if (hyp(x, y) < 200) continue;
+      addProp(propTexture(k, z.doodad, Math.floor(Math.random() * 6)), x, y);
+      this.props[this.props.length - 1].alpha = k === 'bones' ? 0.6 : 0.9;
     }
 
     // guardian lairs
+    const far = Math.min(1600, hyp(bw, bh) * 0.25); // not right next to the start
+    const lairAt: [number, number][] = [];
     for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2 + Math.random() * 0.5;
-      const d = 1600 + Math.random() * 1900; // not right next to the start
-      const x = Math.cos(a) * d;
-      const y = Math.sin(a) * d;
-      const spr = new Sprite(pickupTexture('lair'));
+      const [x, y] = this.randomPoint(far, lairAt, 700);
+      lairAt.push([x, y]);
+      const spr = new Sprite(this.pickupTex('lair'));
       spr.anchor.set(0.5);
       spr.position.set(x, y);
       this.layers.ground.addChild(spr);
@@ -333,12 +393,13 @@ export class Game {
     }
 
     // supply caches
+    const cacheAt: [number, number][] = [];
     for (let i = 0; i < 14; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = 450 + Math.random() * 3200;
-      const spr = new Sprite(pickupTexture('cache'));
+      const [x, y] = this.randomPoint(450, cacheAt, 400);
+      cacheAt.push([x, y]);
+      const spr = new Sprite(this.pickupTex('cache'));
       spr.anchor.set(0.5);
-      spr.position.set(Math.cos(a) * d, Math.sin(a) * d);
+      spr.position.set(x, y);
       this.layers.pickups.addChild(spr);
       this.caches.push({ x: spr.x, y: spr.y, sprite: spr, opened: false, label: null });
     }
@@ -479,6 +540,7 @@ export class Game {
 
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
     if (this.enemyCount >= MAX_ENEMIES) return null;
+    if (!opts.boss && def.shape !== 'muta') [x, y] = this.snapReachable(x, y);
     const { hp: hpScale, dmg: dmgScale } = this.enemyScale(this.time / 60);
     let e = this.enemyPool.pop();
     const shape = opts.boss?.shape ?? def.shape;
@@ -489,7 +551,7 @@ export class Game {
       const spr = new Sprite(tex);
       spr.anchor.set(0.5);
       e = {
-        uid: 0, idx: -1, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
+        uid: 0, idx: -1, def, x, y, moving: false, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
         burnDps: 0, burnTime: 0, burnTick: 0, contactCd: 0, shotTimer: 0, elite: false, boss: null, lair: null, asleep: false,
         hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0, bw: null, bwScale: 1,
         affixes: [], shieldHp: 0, baseTint: 0xffffff, revived: false,
@@ -984,14 +1046,36 @@ export class Game {
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
         ...[
-          [6, 'Napalm burn', '🔥'],
-          [SLOT_NUKE, 'Tactical Nuke', '☢️'],
-          [SLOT_FEEDBACK, 'Feedback', '💫'],
-          [SLOT_DASH, this.race.dashName, '💨'],
+          [6, 'Napalm burn', bwIcon('napalm', '🔥')],
+          [SLOT_NUKE, 'Tactical Nuke', bwIcon('nuke', '☢️')],
+          [SLOT_FEEDBACK, 'Feedback', bwIcon('feedback', '💫')],
+          [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
           [SLOT_RACIAL, 'Orbital Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
     });
+  }
+
+  /** Where the player is steering: keys / stick first, otherwise along the path to the move order. */
+  moveDir(): [number, number] {
+    const m = this.input.move();
+    if (m[0] || m[1]) {
+      this.moveTarget = null;
+      return m;
+    }
+    const t = this.moveTarget;
+    if (!t) return m;
+    const p = this.player;
+    const dx = t[0] - p.x;
+    const dy = t[1] - p.y;
+    const d = hyp(dx, dy);
+    const step = this.stats.moveSpeed / 60;
+    if (d <= Math.max(4, step)) {
+      this.moveTarget = null;
+      return [0, 0];
+    }
+    if (this.walk && d > 32 && this.walk.flowDir(p.x + this.mapOx, p.y + this.mapOy, this.dirBuf, 1)) return [this.dirBuf[0], this.dirBuf[1]];
+    return [dx / d, dy / d];
   }
 
   private tryDash() {
@@ -999,7 +1083,7 @@ export class Game {
     if (p.level < DASH_UNLOCK || p.dashCd > 0 || p.dashT > 0) return;
     let dx: number;
     let dy: number;
-    const [mx, my] = this.input.move();
+    const [mx, my] = this.moveDir();
     // dash where you're moving; aim with the mouse only when standing still
     if (mx || my) {
       dx = mx;
@@ -1078,8 +1162,8 @@ export class Game {
   }
 
   addLob(x0: number, y0: number, x1: number, y1: number, dur: number, damage: number, r: number, slot: number, color: number, tags: readonly string[]) {
-    const spr = this.sprite(this.layers.top, pickupTexture('bomb'));
-    spr.tint = color;
+    const spr = this.sprite(this.layers.top, this.pickupTex('bomb'));
+    spr.tint = bwSprite('pickup:bomb') ? 0xffffff : color;
     this.lobs.push({ x0, y0, x1, y1, t: 0, dur, damage, r, slot, color, sprite: spr, tags: tags as string[] });
   }
 
@@ -1119,6 +1203,7 @@ export class Game {
 
   private bwDeath(e: Enemy, big: boolean): boolean {
     const sh = e.def.shape;
+    deathSfx(e.boss?.def.shape ?? sh);
     const s = Math.max(0.8, (e.radius * (e.boss ? 1.2 : 1)) / 14);
     if (sh === 'zealot' || sh === 'stalker' || sh === 'archon' || sh === 'hybrid') return this.addAnim('fx:pdeath', e.x, e.y, s * 0.7, 0.55);
     if (sh === 'marine' || sh === 'firebat' || sh === 'tank') return this.addAnim(big ? 'fx:tbangl' : 'fx:tbangs', e.x, e.y, s * 0.6, 0.6);
@@ -1149,7 +1234,8 @@ export class Game {
       return;
     }
     const tier = value >= 10 ? 2 : value >= 3 ? 1 : 0;
-    const spr = this.sprite(this.layers.pickups, pickupTexture(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0'));
+    const spr = this.sprite(this.layers.pickups, this.pickupTex(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0'));
+    this.styleGem(spr, tier);
     spr.position.set(x, y);
     this.gems.push({ x, y, value, tier, sprite: spr, pulled: false, speed: 0 });
   }
@@ -1158,15 +1244,32 @@ export class Game {
     const tier = g.value >= 10 ? 2 : g.value >= 3 ? 1 : 0;
     if (tier !== g.tier) {
       g.tier = tier;
-      g.sprite.texture = pickupTexture(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0');
+      g.sprite.texture = this.pickupTex(tier === 2 ? 'xp2' : tier === 1 ? 'xp1' : 'xp0');
+      this.styleGem(g.sprite, tier);
     }
   }
 
+  /** Khaydarin crystal chunks for XP: bigger and recoloured for richer tiers. */
+  private styleGem(spr: Sprite, tier: number) {
+    if (!bwSprite('pickup:xp')) return;
+    spr.scale.set([0.55, 0.75, 1][tier]);
+    spr.tint = [0xffffff, 0xa0ffa8, 0xff9a9a][tier];
+  }
+
+  /** A pickup or landmark: its Brood War sprite (crystal chunks, ore, gas orb, psi emitter, data disk, depot, lair) or the placeholder. */
+  private pickupTex(kind: 'xp0' | 'xp1' | 'xp2' | 'mineral' | 'medkit' | 'magnet' | 'cache' | 'lair' | 'bomb' | 'gear'): Texture {
+    const key = kind.startsWith('xp') ? 'pickup:xp' : `pickup:${kind}`;
+    const bw = bwSprite(key);
+    if (bw) return bw.frames[0];
+    return pickupTexture(kind === 'gear' ? 'cache' : kind);
+  }
+
   dropPickup(kind: PickupKind, x: number, y: number, value: number, data?: unknown) {
-    const tex = pickupTexture(kind === 'gear' ? 'cache' : kind);
-    const spr = this.sprite(this.layers.pickups, tex);
+    const spr = this.sprite(this.layers.pickups, this.pickupTex(kind));
     spr.position.set(x, y);
-    if (kind === 'gear') {
+    spr.scale.set(1);
+    spr.tint = 0xffffff;
+    if (kind === 'gear' && !bwSprite('pickup:gear')) {
       spr.scale.set(0.8);
       spr.tint = 0xffd34d;
     }
@@ -1587,7 +1690,16 @@ export class Game {
 
     // ---- player movement & timers
     if (this.input.consumeDash()) this.tryDash();
-    const [mx, my] = this.input.move();
+    const order = this.input.consumeOrder();
+    if (order) {
+      const W = this.app.screen.width;
+      const H = this.app.screen.height;
+      this.moveTarget = this.snapReachable(this.camX + (order[0] - W / 2) / this.zoom, this.camY + (order[1] - H / 2) / this.zoom);
+      this.walk?.flowTo(this.moveTarget[0] + this.mapOx, this.moveTarget[1] + this.mapOy, 1, 1 << 30);
+    }
+    const [mx, my] = this.moveDir();
+    const px0 = p.x;
+    const py0 = p.y;
     if (p.dashT > 0) {
       p.dashT -= dt;
       p.x += p.dashVx * dt;
@@ -1605,9 +1717,11 @@ export class Game {
       p.y += my * s.moveSpeed * dt;
       p.facing = Math.atan2(my, mx);
     }
-    p.x = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.x));
-    p.y = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.y));
-    if (Math.max(Math.abs(p.x), Math.abs(p.y)) > WORLD - 300 && this.time >= this.edgeWarnAt) {
+    p.x = Math.max(this.bx0 + 20, Math.min(this.bx1 - 20, p.x));
+    p.y = Math.max(this.by0 + 20, Math.min(this.by1 - 20, p.y));
+    this.settle(p, px0, py0, 10);
+    const edge = Math.min(p.x - this.bx0, this.bx1 - p.x, p.y - this.by0, this.by1 - p.y);
+    if (edge < 300 && this.time >= this.edgeWarnAt) {
       this.edgeWarnAt = this.time + 10;
       this.hooks.toast('Edge of the zone: you can get pinned here. Head back toward the middle.', '#ff9a6a');
     }
@@ -1831,6 +1945,54 @@ export class Game {
     }
   }
 
+  /** True when a ground unit of radius r fits at the world point (always true without a real map). */
+  onGround(x: number, y: number, r: number): boolean {
+    return !this.walk || this.walk.fits(x + this.mapOx, y + this.mapOy, r);
+  }
+
+  /** True when the world point is on ground connected to the start. */
+  reachable(x: number, y: number): boolean {
+    return !this.walk || this.walk.reachable(x + this.mapOx, y + this.mapOy);
+  }
+
+  /** Undoes a move that ended inside a wall, sliding along it when one axis is free. */
+  private settle(o: { x: number; y: number }, ox: number, oy: number, r: number) {
+    if (!this.walk || this.onGround(o.x, o.y, r) || !this.onGround(ox, oy, r)) return;
+    if (this.onGround(o.x, oy, r)) o.y = oy;
+    else if (this.onGround(ox, o.y, r)) o.x = ox;
+    else {
+      o.x = ox;
+      o.y = oy;
+    }
+  }
+
+  /** Nearest reachable world point to (x, y), or the point itself. */
+  private snapReachable(x: number, y: number): [number, number] {
+    if (!this.walk || this.reachable(x, y)) return [x, y];
+    const s = this.walk.nearestReachable(x + this.mapOx, y + this.mapOy, 24);
+    return s ? [s[0] - this.mapOx, s[1] - this.mapOy] : [x, y];
+  }
+
+  /** A random spot in the arena at least `minD` from the start and `gap` from the given points (best effort). */
+  private randomPoint(minD: number, others: [number, number][], gap: number): [number, number] {
+    const m = 150;
+    let best: [number, number] = [0, 0];
+    let bestScore = -Infinity;
+    for (let tries = 0; tries < 40; tries++) {
+      const x = this.bx0 + m + Math.random() * (this.bx1 - this.bx0 - m * 2);
+      const y = this.by0 + m + Math.random() * (this.by1 - this.by0 - m * 2);
+      if (!this.reachable(x, y)) continue;
+      const near = others.reduce((d, [ox, oy]) => Math.min(d, hyp(x - ox, y - oy)), Infinity);
+      const score = Math.min(0, hyp(x, y) - minD) * 4 + Math.min(0, near - gap);
+      if (score >= 0) return [x, y];
+      if (score > bestScore) {
+        bestScore = score;
+        best = [x, y];
+      }
+    }
+    return best;
+  }
+
   private spawnPoint(): [number, number] {
     const p = this.player;
     const hw = this.app.screen.width / 2 / this.zoom;
@@ -1840,10 +2002,10 @@ export class Game {
       const a = Math.random() * Math.PI * 2;
       const x = p.x + Math.cos(a) * r;
       const y = p.y + Math.sin(a) * r;
-      if (x > -WORLD && x < WORLD && y > -WORLD && y < WORLD) return [x, y];
+      if (x > this.bx0 && x < this.bx1 && y > this.by0 && y < this.by1 && this.reachable(x, y)) return [x, y];
     }
     const a = Math.random() * Math.PI * 2;
-    return [Math.max(-WORLD, Math.min(WORLD, p.x + Math.cos(a) * r)), Math.max(-WORLD, Math.min(WORLD, p.y + Math.sin(a) * r))];
+    return this.snapReachable(Math.max(this.bx0, Math.min(this.bx1, p.x + Math.cos(a) * r)), Math.max(this.by0, Math.min(this.by1, p.y + Math.sin(a) * r)));
   }
 
   private updateEnemies(dt: number) {
@@ -1852,6 +2014,9 @@ export class Game {
     const hh = this.app.screen.height / 2 / this.zoom + 120;
     const farR = hyp(hw, hh) * 1.7;
     const damp = Math.exp(-7 * dt);
+    const walk = this.walk;
+    const buf = this.dirBuf;
+    if (walk) walk.flowTo(p.x + this.mapOx, p.y + this.mapOy);
     this.grid.clear();
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
@@ -1886,9 +2051,20 @@ export class Game {
       }
       const cloaked = e.affixes.length > 0 && e.affixes.includes('cloaked');
       e.sprite.alpha = cloaked ? (this.revealed(e) ? 0.75 : 0.3) : 1;
+      const ex0 = e.x;
+      const ey0 = e.y;
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const d = hyp(dx, dy) || 1;
+      const ground = !e.boss && e.def.shape !== 'muta';
+      const er = Math.min(10, e.radius * 0.5);
+      // ground units path around cliffs and water; fliers and bosses go straight
+      let ux = dx / d;
+      let uy = dy / d;
+      if (walk && ground && d > 40 && walk.flowDir(e.x + this.mapOx, e.y + this.mapOy, buf)) {
+        ux = buf[0];
+        uy = buf[1];
+      }
       if (e.boss) {
         this.updateBoss(e, e.boss, dt);
       } else {
@@ -1903,6 +2079,7 @@ export class Game {
           } else {
             e.x += (lx / ld) * e.speed * 1.5 * dt;
             e.y += (ly / ld) * e.speed * 1.5 * dt;
+            this.settle(e, ex0, ey0, er);
           }
           this.grid.insert(i, e.x, e.y);
           e.sprite.position.set(e.x, e.y);
@@ -1922,8 +2099,8 @@ export class Game {
         if (def.behavior === 'ranged') {
           const range = def.range ?? 250;
           if (d > range) {
-            e.x += (dx / d) * spd * dt;
-            e.y += (dy / d) * spd * dt;
+            e.x += ux * spd * dt;
+            e.y += uy * spd * dt;
           } else if (d < range * 0.6) {
             e.x -= (dx / d) * spd * 0.5 * dt;
             e.y -= (dy / d) * spd * 0.5 * dt;
@@ -1945,8 +2122,8 @@ export class Game {
             e.x += e.cdx * spd * 2.4 * dt;
             e.y += e.cdy * spd * 2.4 * dt;
           } else {
-            e.x += (dx / d) * spd * dt;
-            e.y += (dy / d) * spd * dt;
+            e.x += ux * spd * dt;
+            e.y += uy * spd * dt;
             e.shotTimer -= dt;
             if (e.shotTimer <= 0 && d < 340) {
               e.shotTimer = 4;
@@ -1957,8 +2134,8 @@ export class Game {
             }
           }
         } else {
-          e.x += (dx / d) * spd * dt;
-          e.y += (dy / d) * spd * dt;
+          e.x += ux * spd * dt;
+          e.y += uy * spd * dt;
           if (def.behavior === 'exploder' && d < e.radius + 26) {
             // blowing up on you isn't a kill: no XP, no kill count
             this.banelingBlast(e);
@@ -1973,6 +2150,8 @@ export class Game {
       e.y += e.ky * dt;
       e.kx *= damp;
       e.ky *= damp;
+      if (ground) this.settle(e, ex0, ey0, er);
+      e.moving = Math.abs(e.x - ex0) + Math.abs(e.y - ey0) > e.speed * dt * 0.3;
       // contact damage
       const cr = e.radius + 14;
       if (d < cr && e.contactCd <= 0) {
@@ -2005,8 +2184,11 @@ export class Game {
             const dd = Math.sqrt(d2);
             const push = ((rr - dd) / dd) * sepK;
             const w = o.mass / (e.mass + o.mass);
+            const sx0 = e.x;
+            const sy0 = e.y;
             e.x += ox * push * w * 2;
             e.y += oy * push * w * 2;
+            if (this.walk && e.def.shape !== 'muta') this.settle(e, sx0, sy0, Math.min(10, e.radius * 0.5));
           }
         }
       }
@@ -2017,7 +2199,7 @@ export class Game {
         spr.position.set(e.x, e.y);
         const a = Math.atan2(p.y - e.y, p.x - e.x);
         e.facing += angleLerp(e.facing, a, Math.min(1, dt * 8));
-        if (e.bw) orientBw(spr, e.bw, e.facing, e.bwScale);
+        if (e.bw) orientBw(spr, e.bw, e.facing, e.bwScale, e.moving && !e.asleep ? walkFrame(e.bw, this.time + e.uid * 0.37) : 0);
         else spr.rotation = e.facing;
       }
     }
@@ -2372,16 +2554,23 @@ export class Game {
     if (this.ground.height !== H) this.ground.height = H;
     this.ground.tileScale.set(z);
     this.ground.tilePosition.set(-this.camX * z + W / 2 + sx, -this.camY * z + H / 2 + sy);
+    if (this.mapGround) {
+      const hw = W / 2 / z;
+      const hh = H / 2 / z;
+      const cx = this.camX + this.mapOx;
+      const cy = this.camY + this.mapOy;
+      this.mapGround.update(cx - hw, cy - hh, cx + hw, cy + hh, this.time < 0.1 ? Infinity : 2);
+    }
 
     // hero
     const hs = this.heroSprite;
     hs.position.set(p.x, p.y);
-    const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0;
+    const moving = this.input.move()[0] !== 0 || this.input.move()[1] !== 0 || !!this.moveTarget;
     this.heroAngle = angleLerpTo(this.heroAngle, p.facing, damp(21, dt));
     const bob = moving && !this.paused ? 1 + Math.sin(this.time * 18) * 0.04 : 1;
     if (this.heroBw) {
-      orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1);
-      hs.scale.y *= 1 / bob;
+      orientBw(hs, this.heroBw, this.heroAngle, (40 / this.heroBw.size) * 1.1, moving && !this.paused ? walkFrame(this.heroBw, this.time) : 0);
+      if (!this.heroBw.walk) hs.scale.y *= 1 / bob;
     } else {
       hs.rotation = this.heroAngle;
       hs.scale.set(1.25 * bob, 1.25 / bob);
@@ -2525,6 +2714,7 @@ export class Game {
   }
 
   destroy() {
+    this.mapGround?.destroy();
     this.root.destroy({ children: true });
     this.input.joystickEl.style.display = 'none';
   }

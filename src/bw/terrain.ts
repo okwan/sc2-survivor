@@ -21,6 +21,9 @@ export const BW_TERRAIN_FILES = [
   'tileset/jungle.cv5', 'tileset/jungle.vx4', 'tileset/jungle.vr4',
   'tileset/platform.cv5', 'tileset/platform.vx4', 'tileset/platform.vr4',
   'tileset/twilight.cv5', 'tileset/twilight.vx4', 'tileset/twilight.vr4',
+  'tileset/install.cv5', 'tileset/install.vx4', 'tileset/install.vr4',
+  'tileset/desert.cv5', 'tileset/desert.vx4', 'tileset/desert.vr4',
+  'tileset/ice.cv5', 'tileset/ice.vx4', 'tileset/ice.vr4',
 ];
 
 export function terrainFilesFor(zoneId: string): string[] {

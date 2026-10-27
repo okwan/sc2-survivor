@@ -3,6 +3,8 @@ import { CascStorage } from './casc';
 import { drawGrpFrame, parseGrp } from './grp';
 import { BW_TERRAIN_FILES, terrainFilesFor, terrainTexture } from './terrain';
 import { BW_UI_FILES } from './ui-files';
+import { BW_SOUND_FILES } from './sounds';
+import { MapGround, mapTilesetFiles, parseMapJson, type BwMap } from './map';
 import { normalizePath, readZip } from './zip';
 
 /**
@@ -40,6 +42,14 @@ export const BW_UNITS: Record<string, string> = {
   'prop:min2': 'unit/neutral/min02.grp',
   'prop:min3': 'unit/neutral/min03.grp',
   'prop:geyser': 'unit/neutral/geyser.grp',
+  'pickup:xp': 'unit/neutral/khchunk.grp',
+  'pickup:mineral': 'unit/neutral/orechunk.grp',
+  'pickup:medkit': 'unit/neutral/gasorb.grp',
+  'pickup:magnet': 'unit/neutral/psiemit.grp',
+  'pickup:gear': 'unit/neutral/datadisk.grp',
+  'pickup:cache': 'unit/terran/depot.grp',
+  'pickup:lair': 'unit/zerg/lair.grp',
+  'pickup:bomb': 'unit/bullet/grenade.grp',
 };
 
 /** Effects (all animation frames are kept). */
@@ -117,14 +127,20 @@ const PLAYER_COLORS = {
 };
 
 export interface BwSprite {
-  frames: Texture[]; // 17 facings, north to south clockwise
+  /** GRP frames by index: 0-16 are the 17 facings (north to south clockwise); later sets only if animated */
+  frames: Texture[];
   size: number; // typical visible size in px
+  /** walk cycle from iscript: [first frame of the set, game ticks shown] */
+  walk?: [number, number][];
 }
+
+/** Frame sequences per unit GRP, read from iscript.bin at deploy (bw/anims.json). */
+let anims: Record<string, { walk?: [number, number][] }> = {};
 
 const registry = new Map<string, BwSprite>();
 /** Every Brood War file currently available (player's own or bundled with the site). */
 let store = new Map<string, Uint8Array>();
-const LAZY = /\.(cv5|vx4|vr4)$/; // big tileset files, fetched per zone when a run starts
+const LAZY = /\.(cv5|vx4|vr4)$|^maps\/|^unit\/thingy\/tileset\/|^sound\//; // tilesets, maps and their doodads: fetched per zone when a run starts
 type BwSource = 'local' | 'bundled' | null;
 let status: { loaded: boolean; count: number; missing: string[]; source: BwSource } = { loaded: false, count: 0, missing: [], source: null };
 
@@ -155,24 +171,37 @@ export function bwDoodads(zoneId: string): { img: BwSprite; shadow: BwSprite | n
   });
 }
 
-/** Points a sprite at the facing frame for an angle (0 = east, radians). BW mirrors the west half. */
-export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number) {
+/** First frame of the walk cycle's set at a time in seconds (0 for units without one). StarCraft runs ~24 ticks a second on Fastest. */
+export function walkFrame(bw: BwSprite, seconds: number): number {
+  const w = bw.walk;
+  if (!w) return 0;
+  let total = 0;
+  for (const [, t] of w) total += t;
+  let k = (seconds * 24) % total;
+  for (const [f, t] of w) {
+    if (k < t) return f;
+    k -= t;
+  }
+  return w[0][0];
+}
+
+/**
+ * Points a sprite at the facing frame for an angle (0 = east, radians), within the frame set
+ * starting at `base` (a walk cycle frame). BW mirrors the west half.
+ */
+export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number, base = 0) {
   let d = Math.round(((angle + Math.PI / 2) / (Math.PI * 2)) * 32);
   d = ((d % 32) + 32) % 32;
   const n = bw.frames.length;
-  if (d <= 16) {
-    spr.texture = bw.frames[Math.min(d, n - 1)];
-    spr.scale.set(scale, scale);
-  } else {
-    spr.texture = bw.frames[Math.min(32 - d, n - 1)];
-    spr.scale.set(-scale, scale);
-  }
+  const f = d <= 16 ? d : 32 - d;
+  spr.texture = bw.frames[base + f] ?? bw.frames[Math.min(f, n - 1)];
+  spr.scale.set(d <= 16 ? scale : -scale, scale);
   spr.rotation = 0;
 }
 
 // ------------------------------------------------------------ file intake
 const DOODAD_FILES = () => Object.values(BW_DOODADS).flatMap((l) => l.flatMap(([a, b]) => (b ? [a, b] : [a])));
-const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES, ...BW_UI_FILES];
+const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES, ...BW_UI_FILES, ...BW_SOUND_FILES];
 
 function wanted(path: string): string | null {
   for (const p of ALL_FILES()) if (path.endsWith(p)) return p;
@@ -290,8 +319,8 @@ export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 
       continue;
     }
     try {
-      const team = key.startsWith('hero:') || key.startsWith('minion:') ? 'blue' : 'red';
-      registry.set(key, buildOne(buf, pals[team]));
+      const team = key.startsWith('hero:') || key.startsWith('minion:') || key === 'pickup:cache' ? 'blue' : 'red';
+      registry.set(key, buildUnit(path, buf, pals[team]));
     } catch {
       missing.push(path);
     }
@@ -322,29 +351,73 @@ export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 
   return status;
 }
 
-function buildOne(buf: Uint8Array, pal: Uint8Array, maxFrames = 17, shadow = false): BwSprite {
+const ATLAS_W = 2048;
+
+/**
+ * Decodes GRP frames into an atlas, each trimmed to its own box so animated units stay small in
+ * memory; the textures keep the full frame size so every frame shares the GRP's centre.
+ * `which` lists the frames to keep (default: the first `maxFrames`).
+ */
+function buildOne(buf: Uint8Array, pal: Uint8Array, maxFrames = 17, shadow = false, which?: number[]): BwSprite {
   const g = parseGrp(buf);
-  const n = Math.min(maxFrames, g.frames);
+  const list = (which ?? Array.from({ length: Math.min(maxFrames, g.frames) }, (_, i) => i)).filter((f) => f < g.frames);
   const W = g.width;
   const H = g.height;
-  const cv = document.createElement('canvas');
-  cv.width = W * n;
-  cv.height = H;
-  const ctx = cv.getContext('2d')!;
-  const img = ctx.createImageData(W * n, H);
+  const box = (f: number) => {
+    const h0 = 6 + f * 8;
+    let fw = g.view.getUint8(h0 + 2);
+    if (g.view.getUint32(h0 + 4, true) & 0x80000000) fw += 0x100;
+    return { x: g.view.getUint8(h0), y: g.view.getUint8(h0 + 1), w: Math.max(1, fw), h: Math.max(1, g.view.getUint8(h0 + 3)) };
+  };
+  // shelf packing
+  const place: { f: number; x: number; y: number; b: ReturnType<typeof box> }[] = [];
+  let cx = 0;
+  let cy = 0;
+  let rowH = 0;
   let sizeSum = 0;
-  for (let i = 0; i < n; i++) {
-    drawGrpFrame(g, i, pal, img.data, W * n, i * W, 0);
-    const h0 = 6 + i * 8;
-    sizeSum += Math.max(g.view.getUint8(h0 + 2), g.view.getUint8(h0 + 3));
+  for (const f of list) {
+    const b = box(f);
+    if (cx + b.w > ATLAS_W) {
+      cx = 0;
+      cy += rowH + 1;
+      rowH = 0;
+    }
+    place.push({ f, x: cx, y: cy, b });
+    cx += b.w + 1;
+    rowH = Math.max(rowH, b.h);
+    sizeSum += Math.max(b.w, b.h);
   }
+  const cv = document.createElement('canvas');
+  cv.width = Math.min(ATLAS_W, Math.max(1, ...place.map((p) => p.x + p.b.w)));
+  cv.height = Math.max(1, cy + rowH);
+  const ctx = cv.getContext('2d')!;
+  const img = ctx.createImageData(cv.width, cv.height);
+  // drawGrpFrame writes at (ox + frame.x, oy + frame.y), so shift by the frame's own offset
+  for (const p of place) drawGrpFrame(g, p.f, pal, img.data, cv.width, p.x - p.b.x, p.y - p.b.y);
   if (shadow) for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3]) img.data.set([0, 0, 0, 110], i);
   ctx.putImageData(img, 0, 0);
   const sheet = Texture.from(cv);
   sheet.source.scaleMode = 'nearest';
   const frames: Texture[] = [];
-  for (let i = 0; i < n; i++) frames.push(new Texture({ source: sheet.source, frame: new Rectangle(i * W, 0, W, H) }));
-  return { frames, size: Math.max(8, sizeSum / n) };
+  for (const p of place)
+    frames[p.f] = new Texture({
+      source: sheet.source,
+      frame: new Rectangle(p.x, p.y, p.b.w, p.b.h),
+      orig: new Rectangle(0, 0, W, H),
+      trim: new Rectangle(p.b.x, p.b.y, p.b.w, p.b.h),
+    });
+  return { frames, size: Math.max(8, sizeSum / Math.max(1, place.length)) };
+}
+
+/** A unit's facings plus its walk cycle frame sets, if the site shipped its iscript animation. */
+function buildUnit(path: string, buf: Uint8Array, pal: Uint8Array): BwSprite {
+  const walk = anims[path]?.walk;
+  if (!walk) return buildOne(buf, pal);
+  const bases = [...new Set([0, ...walk.map(([f]) => f)])];
+  const spr = buildOne(buf, pal, 17, false, bases.flatMap((b) => Array.from({ length: 17 }, (_, i) => b + i)));
+  // only keep the cycle if every frame set decoded
+  if (walk.every(([f]) => spr.frames[f] && spr.frames[f + 16])) spr.walk = walk;
+  return spr;
 }
 
 /** Loads the player's own files if they picked some, otherwise the sprites the site ships in bw/ (if any). */
@@ -361,14 +434,24 @@ export async function initBw(): Promise<void> {
 }
 
 let bundledPaths = new Set<string>();
+/** zone -> tileset of the real map the site ships for it */
+let bundledMaps: Record<string, string> = {};
+const maps = new Map<string, BwMap>();
 
 async function loadBundled() {
   try {
     const res = await fetch('bw/manifest.json');
     if (!res.ok) return;
-    const { files: paths } = (await res.json()) as { files: string[] };
+    const { files: paths, maps: zoneMaps } = (await res.json()) as { files: string[]; maps?: Record<string, string> };
     bundledPaths = new Set(paths);
+    bundledMaps = zoneMaps ?? {};
     const got = new Map<string, Uint8Array>();
+    if (paths.includes('anims.json'))
+      try {
+        anims = await (await fetch('bw/anims.json')).json();
+      } catch {
+        anims = {};
+      }
     await Promise.all(
       paths.filter((p) => !LAZY.test(p)).map(async (p) => {
         const r = await fetch('bw/' + p);
@@ -381,11 +464,10 @@ async function loadBundled() {
   }
 }
 
-/** Fetches the tileset files a zone needs if the site ships them and they aren't loaded yet. */
-export async function ensureZoneFiles(zoneId: string): Promise<void> {
-  const need = terrainFilesFor(zoneId).filter((p) => !store.has(p) && bundledPaths.has(p));
+/** Fetches bundled files that aren't loaded yet (missing ones are skipped). */
+export async function fetchInto(paths: string[]) {
   await Promise.all(
-    need.map(async (p) => {
+    paths.filter((p) => !store.has(p) && bundledPaths.has(p)).map(async (p) => {
       try {
         const r = await fetch('bw/' + p);
         if (r.ok) store.set(p, new Uint8Array(await r.arrayBuffer()));
@@ -396,9 +478,63 @@ export async function ensureZoneFiles(zoneId: string): Promise<void> {
   );
 }
 
+/** Fetches what a zone needs (its real map, tileset and doodads) if the site ships them and they aren't loaded yet. */
+export async function ensureZoneFiles(zoneId: string): Promise<void> {
+  const set = bundledMaps[zoneId];
+  if (set && !maps.has(zoneId)) {
+    try {
+      const r = await fetch(`bw/maps/${zoneId}.json`);
+      if (r.ok) maps.set(zoneId, parseMapJson(await r.json()));
+    } catch {
+      /* fall back to the zone's tile pattern */
+    }
+  }
+  const m = maps.get(zoneId);
+  if (m) await fetchInto([...mapTilesetFiles(m.set), ...m.images, ...m.images.map((p) => DOODAD_SHADOW.get(p) ?? '')]);
+  else await fetchInto(terrainFilesFor(zoneId));
+}
 /** Starts downloading every zone's tileset in the background so runs start instantly. */
 export function prefetchTerrain(zoneIds: string[]) {
   zoneIds.reduce((p, z) => p.then(() => ensureZoneFiles(z)), Promise.resolve());
+}
+
+/** The zone's real StarCraft map with its ground renderer, when the map and its tileset are loaded. */
+export function bwMap(zoneId: string): MapGround | null {
+  const m = maps.get(zoneId);
+  if (!m) return null;
+  try {
+    return new MapGround(m, store);
+  } catch {
+    return null;
+  }
+}
+
+const DOODAD_SHADOW = new Map(Object.values(BW_DOODADS).flat().filter((d): d is [string, string] => !!d[1]));
+const mapSprites = new Map<string, BwSprite | null>();
+const palIds = new WeakMap<Uint8Array, number>();
+let palCount = 0;
+
+/** A map doodad (frame 0) in its tileset's palette, plus its shadow if we know it. */
+export function mapDoodad(path: string, pal: Uint8Array): { img: BwSprite; shadow: BwSprite | null } | null {
+  const get = (p: string, shadow: boolean) => {
+    if (!palIds.has(pal)) palIds.set(pal, palCount++);
+    const key = `${p}@${palIds.get(pal)}`;
+    if (!mapSprites.has(key)) {
+      const buf = store.get(p);
+      let spr: BwSprite | null = null;
+      try {
+        spr = buf ? buildOne(buf, pal, 1, shadow) : null;
+      } catch {
+        spr = null;
+      }
+      mapSprites.set(key, spr);
+    }
+    return mapSprites.get(key)!;
+  };
+  const img = get(path, false);
+  if (!img) return null;
+  const sh = DOODAD_SHADOW.get(path);
+  return { img, shadow: sh ? get(sh, true) : null };
 }
 
 /** The zone's Brood War ground texture, or null to use the procedural one. */
