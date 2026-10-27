@@ -14,6 +14,8 @@ export const SPELL_ICONS: Record<string, number> = {
   gauss: 339, frag: 314, flame: 335, mines: 376, yamato: 359, matrix: 317, turret: 290,
   spines: 352, spores: 373, bile: 356, brood: 349, scourge: 378, acidpool: 270, spinenova: 351,
   blades: 353, photon: 354, storm: 355, interceptors: 331, arc: 362, prism: 383, purnova: 381,
+  // EMP Shockwave, Irradiate, Lurker Aspect, Mutalisk, Scarab Damage, Maelstrom
+  emp: 241, irradiate: 242, lurker: 376, glaive: 43, scarab: 314, psiaura: 381,
 };
 
 /**
