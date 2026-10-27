@@ -124,6 +124,8 @@ export interface Lair {
   cleared: boolean;
   /** The guardian was brought up to the run's current strength (first wake only). */
   scaled?: boolean;
+  /** Game time after which a cleared lair can return with a new guardian. */
+  respawnAt?: number;
 }
 
 export interface Cache {
@@ -132,10 +134,8 @@ export interface Cache {
   sprite: Sprite;
   opened: boolean;
   label: Sprite | null;
-  /** Game time when an opened cache restocks. */
+  /** Game time when an opened cache turns up again somewhere near the player. */
   restockAt?: number;
-  /** -1 while the hero is still standing on it after its shop closed. */
-  shopAt?: number;
 }
 
 export interface Fx {

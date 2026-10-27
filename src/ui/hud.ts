@@ -14,7 +14,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
 const TIPS: { at: number; text: string; touch?: string }[] = [
   { at: 1, text: 'Right-click to move, like in StarCraft (WASD works too). Your spells fire on their own.', touch: 'Drag anywhere to move. Your spells fire on their own.' },
   { at: 8, text: 'Grab the blue crystals enemies drop to level up and pick upgrades.' },
-  { at: 20, text: 'Arrows on the edge point to lairs (orange, guarded gear) and supply caches (yellow, cost minerals).' },
+  { at: 20, text: 'Arrows on the edge point to lairs (orange, guarded gear) and supply caches (yellow, a free module). The world goes on forever.' },
 ];
 
 function tipsSeen(set = false): boolean {
@@ -260,6 +260,7 @@ export class Hud {
 const CARD_X = [505, 551, 597];
 const CARD_Y = [68, 110, 152];
 const MM = 128;
+const RADAR = 4800; // world pixels across the minimap
 
 /**
  * The Brood War console along the bottom of the screen: minimap, status panel, hero wireframe
@@ -270,7 +271,7 @@ class BwConsole {
   root = el('div', 'bwconsole');
   private mm = document.createElement('canvas');
   private mmCtx: CanvasRenderingContext2D;
-  private mmBg: HTMLCanvasElement | null = null;
+  private mmBg: { img: CanvasImageSource; w: number; h: number; dim: number } | null | undefined = undefined;
   private status = el('div', 'bwstatus');
   private wire = el('img', 'bwwire');
   private cells: { root: HTMLDivElement; img: HTMLImageElement; cd: HTMLElement; rk: HTMLElement; key: string }[] = [];
@@ -401,48 +402,50 @@ ${hasShield ? '<div class="bar sh"><i></i></div><div class="v sh"></div>' : ''}
     if (this.frame++ % 4 === 0) this.drawMinimap();
   }
 
-  /** Minimap pixels per world pixel: the arena's long side fills the box. */
+  /** Minimap pixels per world pixel: the world has no edge, so the minimap is a radar around the camera. */
   private mmScale() {
-    const g = this.game;
-    return MM / Math.max(g.bx1 - g.bx0, g.by1 - g.by0);
+    return MM / RADAR;
   }
 
   private mmX(x: number) {
-    const g = this.game;
-    return (x - g.bx0) * this.mmScale() + (MM - (g.bx1 - g.bx0) * this.mmScale()) / 2;
+    return (x - this.game.camX) * this.mmScale() + MM / 2;
   }
 
   private mmY(y: number) {
-    const g = this.game;
-    return (y - g.by0) * this.mmScale() + (MM - (g.by1 - g.by0) * this.mmScale()) / 2;
+    return (y - this.game.camY) * this.mmScale() + MM / 2;
   }
 
-  private minimapBackground(): HTMLCanvasElement {
-    if (this.mmBg) return this.mmBg;
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = MM;
-    const ctx = cv.getContext('2d')!;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, MM, MM);
+  /** The ground's minimap image and the world size it repeats over. */
+  private minimapSource(): { img: CanvasImageSource; w: number; h: number; dim: number } | null {
+    if (this.mmBg !== undefined) return this.mmBg;
     const g = this.game;
     const mg = g.mapGround;
     const tex = mg ? null : bwTerrain(g.zone.id);
     const src = tex?.source.resource as CanvasImageSource | undefined;
-    if (mg) {
-      // the real map, one pixel per tile, letterboxed like the console does for non-square maps
-      const k = this.mmScale();
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(mg.minimap(), this.mmX(g.bx0), this.mmY(g.by0), (g.bx1 - g.bx0) * k, (g.by1 - g.by0) * k);
-    } else if (src && tex) {
-      // the ground repeats every texture-width world pixels
-      const step = tex.width * this.mmScale();
-      ctx.imageSmoothingEnabled = true;
-      for (let y = 0; y < MM; y += step) for (let x = 0; x < MM; x += step) ctx.drawImage(src, x, y, step, step);
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    // the real map, one pixel per tile like the console's; otherwise the zone's ground pattern, darkened
+    this.mmBg = mg ? { img: mg.minimap(), w: g.periodW, h: g.periodH, dim: 0 } : src && tex ? { img: src, w: tex.width, h: tex.height, dim: 0.25 } : null;
+    return this.mmBg;
+  }
+
+  private drawBackground(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, MM, MM);
+    const bg = this.minimapSource();
+    if (!bg) return;
+    const k = this.mmScale();
+    const sw = bg.w * k;
+    const sh = bg.h * k;
+    const g = this.game;
+    const mx = g.mapGround ? -g.mapOx : 0;
+    const my = g.mapGround ? -g.mapOy : 0;
+    const x0 = this.mmX(mx) - Math.ceil(this.mmX(mx) / sw) * sw;
+    const y0 = this.mmY(my) - Math.ceil(this.mmY(my) / sh) * sh;
+    ctx.imageSmoothingEnabled = !g.mapGround;
+    for (let y = y0; y < MM; y += sh) for (let x = x0; x < MM; x += sw) ctx.drawImage(bg.img, Math.round(x), Math.round(y), Math.ceil(sw), Math.ceil(sh));
+    if (bg.dim) {
+      ctx.fillStyle = `rgba(0,0,0,${bg.dim})`;
       ctx.fillRect(0, 0, MM, MM);
     }
-    this.mmBg = cv;
-    return cv;
   }
 
   private drawMinimap() {
@@ -451,7 +454,7 @@ ${hasShield ? '<div class="bar sh"><i></i></div><div class="v sh"></div>' : ''}
     const k = this.mmScale();
     const mx = (x: number) => this.mmX(x);
     const my = (y: number) => this.mmY(y);
-    ctx.drawImage(this.minimapBackground(), 0, 0);
+    this.drawBackground(ctx);
     ctx.fillStyle = '#ffd34d';
     for (const c of g.caches) if (!c.opened) ctx.fillRect(mx(c.x) - 1, my(c.y) - 1, 3, 3);
     ctx.fillStyle = '#ff9a3c';

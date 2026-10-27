@@ -2,20 +2,19 @@ import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 
 import { AFFIXES, AFFIX_BY_ID, type AffixId } from '../data/affixes';
 import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
 import type { DailyDef } from '../data/daily';
-import { MODULES, modulePrice, type ModuleDef } from '../data/modules';
+import { MODULES, type ModuleDef } from '../data/modules';
 import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem, type LegendaryEffect } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import type { HeroDef } from '../data/heroes';
 import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
-import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
+import { RARITY_COLORS, addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { currentHero, gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { glyph } from '../render/glyphs';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
 import { bwDoodads, bwMap, bwSprite, bwTerrain, mapDoodad, orientBw, walkFrame, type BwSprite } from '../bw/assets';
 import { mapStart, type MapGround } from '../bw/map';
-import { MapWalk } from '../bw/walk';
 import { deathSfx, setSfxRace, sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
@@ -27,7 +26,13 @@ import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
 import { RACE_UI } from '../bw/ui-files';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
-const WORLD = 4000; // half-size of the arena when there is no real map: -WORLD..WORLD
+const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no real map
+const GRID_HALF = 3600; // half-size of the spatial grid around the player
+const LAIRS = 4;
+const CACHES = 5;
+const GAP = 600; // closest two landmarks may be
+const LANDMARK_FAR = 3200; // landmarks farther than this from the player move closer
+const CACHE_RESTOCK = 50; // seconds before an opened cache turns up again near the player
 const MAX_ENEMIES = 1400;
 const MAX_ALIVE = 650;
 const MAX_GEMS = 700;
@@ -55,6 +60,7 @@ export interface RunResult {
   daily: string;
   damage: { name: string; icon: string; dmg: number }[];
   killedBy: string;
+  minerals: number;
 }
 
 /** Optional side missions offered between bosses: hold a beacon, hunt a marked elite, or recover data cores. */
@@ -78,13 +84,6 @@ export interface GameHooks {
   victory: () => void;
   ended: (r: RunResult) => void;
   toast: (msg: string, color?: string) => void;
-  /** Walking into a supply cache opens its shop. */
-  cacheShop: (offers: CacheOffer[], gearCost: number, buy: (o: CacheOffer | 'gear' | null) => void) => void;
-}
-
-export interface CacheOffer {
-  mod: ModuleDef;
-  price: number;
 }
 
 interface Player {
@@ -182,21 +181,22 @@ export class Game {
   shakeAmt = 0;
   camX = 0;
   camY = 0;
-  /** The real StarCraft map under the arena, if loaded. World (0, 0) is the player's start location. */
+  /**
+   * The real StarCraft map under the battlefield, if loaded. It repeats in every direction and
+   * nothing on it blocks movement, so the world has no edge. World (0, 0) is the start location.
+   */
   mapGround: MapGround | null = null;
-  /** Where ground units can go on the real map (cliffs, water and doodads block). */
-  walk: MapWalk | null = null;
   /** The player's StarCraft-style move order (right-click), in world coordinates. */
   moveTarget: [number, number] | null = null;
-  private dirBuf = new Float32Array(2);
   /** Map pixel of world (0, 0). */
   mapOx = 0;
   mapOy = 0;
-  /** Playable area in world coordinates. */
-  bx0 = -WORLD;
-  by0 = -WORLD;
-  bx1 = WORLD;
-  by1 = WORLD;
+  /** Size of one copy of the map (or of the scattered props without one), in world pixels. */
+  periodW = WORLD * 2;
+  periodH = WORLD * 2;
+  /** Map doodads, one container per copy of the map near the camera. */
+  private doodads: [number, number, Texture][] = [];
+  private doodadCopies = new Map<number, Container>();
 
   player: Player;
   stats: Stats = baseStats();
@@ -243,7 +243,8 @@ export class Game {
   private nextElite = 120; // later zones' elites (archons, hybrids) were killing fresh heroes at 1:30
   private nextSurge = 60;
   private nextMagnet = 75;
-  private cacheCost = -1; // set on first use: starts higher in later zones
+  /** Minerals picked up this run; they're banked as vespene at the end. */
+  mineralsEarned = 0;
   private endlessBossT = 120;
   private endlessIdx = 0;
   /** Delayed actions on game time, so they wait while the game is paused. */
@@ -252,7 +253,6 @@ export class Game {
   private extraDmg: Record<number, number> = {};
   /** The last enemy that hurt the player. */
   lastHitBy = '';
-  private edgeWarnAt = 0;
   probe: Minion | null = null;
   /** Active racial timers: next Orbital Strike / Guardian Shield, Burrow ready time, Guardian Shield left. */
   racialAt = 30;
@@ -286,17 +286,11 @@ export class Game {
     if (this.mapGround) {
       const m = this.mapGround.map;
       [this.mapOx, this.mapOy] = mapStart(m);
-      if (m.walk) {
-        this.walk = new MapWalk(m.w, m.h, m.walk, this.mapOx, this.mapOy);
-        const s = this.walk.nearestReachable(this.mapOx, this.mapOy, 40);
-        if (s) [this.mapOx, this.mapOy] = s;
-      }
-      this.bx0 = -this.mapOx;
-      this.by0 = -this.mapOy;
-      this.bx1 = m.w * 32 - this.mapOx;
-      this.by1 = m.h * 32 - this.mapOy;
+      this.periodW = m.w * 32;
+      this.periodH = m.h * 32;
     }
-    this.grid = new SpatialGrid(this.bx0 - 200, this.by0 - 200, this.bx1 - this.bx0 + 400, this.by1 - this.by0 + 400, 80, MAX_ENEMIES);
+    // the grid follows the player; anything farther out than this gets moved back in anyway
+    this.grid = new SpatialGrid(-GRID_HALF, -GRID_HALF, GRID_HALF * 2, GRID_HALF * 2, 80, MAX_ENEMIES);
     this.player = {
       x: 0, y: 0, hp: 1, shield: 0, barrier: 0, barrierTime: 0, level: 1, xp: 0,
       minerals: perkLevel('minerals') * 40, kills: 0, facing: 0, lastHit: -10, invuln: 0,
@@ -344,19 +338,6 @@ export class Game {
     this.world.addChild(this.gfx);
     this.layers.fx.blendMode = 'add';
 
-    // arena border, and darkness outside it
-    const { bx0, by0, bx1, by1 } = this;
-    const bw = bx1 - bx0;
-    const bh = by1 - by0;
-    const border = new Graphics();
-    if (!mg) border.rect(bx0, by0, bw, bh).stroke({ width: 12, color: 0xff3030, alpha: 0.35 });
-    const out = mg ? 1 : 0.6;
-    border.rect(bx0 - 2000, by0 - 2000, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
-    border.rect(bx0 - 2000, by1, bw + 4000, 2000).fill({ color: 0x000000, alpha: out });
-    border.rect(bx0 - 2000, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
-    border.rect(bx1, by0, 2000, bh).fill({ color: 0x000000, alpha: out });
-    this.layers.ground.addChild(border);
-
     const addProp = (tex: Texture, x: number, y: number) => {
       const s = new Sprite(tex);
       s.anchor.set(0.5);
@@ -365,24 +346,23 @@ export class Game {
       this.props.push(s);
     };
     if (mg) {
-      // the map's own doodads, mineral fields and geysers where the map maker put them
+      // the map's own doodads, mineral fields and geysers where the map maker put them (map pixels)
       const m = mg.map;
-      const placed: [number, number, Texture][] = [];
+      const placed = this.doodads;
       for (const [k, x, y] of m.doodads) {
         const d = mapDoodad(m.images[k], mg.palette);
         if (!d) continue;
-        if (d.shadow) placed.push([x - this.mapOx, y - this.mapOy - 0.5, d.shadow.frames[0]]);
-        placed.push([x - this.mapOx, y - this.mapOy, d.img.frames[0]]);
+        if (d.shadow) placed.push([x, y - 0.5, d.shadow.frames[0]]);
+        placed.push([x, y, d.img.frames[0]]);
       }
       const mins = (['prop:min1', 'prop:min2', 'prop:min3'] as const).map((k) => bwSprite(k));
       for (const [x, y, kind] of m.minerals) {
         const b = mins[kind] ?? mins[0];
-        if (b) placed.push([x - this.mapOx, y - this.mapOy, b.frames[0]]);
+        if (b) placed.push([x, y, b.frames[0]]);
       }
       const gey = bwSprite('prop:geyser');
-      if (gey) for (const [x, y] of m.geysers) placed.push([x - this.mapOx, y - this.mapOy, gey.frames[0]]);
+      if (gey) for (const [x, y] of m.geysers) placed.push([x, y, gey.frames[0]]);
       placed.sort((a, b) => a[1] - b[1]);
-      for (const [x, y, t] of placed) addProp(t, x, y);
     }
 
     // scattered props: Brood War mineral fields and geysers on BW ground, procedural ones otherwise
@@ -411,37 +391,22 @@ export class Game {
       this.props[this.props.length - 1].alpha = k === 'bones' ? 0.6 : 0.9;
     }
 
-    // guardian lairs
-    const far = Math.min(1600, hyp(bw, bh) * 0.25); // not right next to the start
-    const lairAt: [number, number][] = [];
-    for (let i = 0; i < 7; i++) {
-      const [x, y] = this.randomPoint(far, lairAt, 700);
-      lairAt.push([x, y]);
+    // guardian lairs and supply caches: a few always within reach, moved along as the player roams
+    for (let i = 0; i < LAIRS; i++) {
       const spr = new Sprite(this.pickupTex('lair'));
       spr.anchor.set(0.5);
-      spr.position.set(x, y);
       this.layers.ground.addChild(spr);
-      const lair: Lair = { x, y, sprite: spr, guardian: null, cleared: false };
+      const lair: Lair = { x: 0, y: 0, sprite: spr, guardian: null, cleared: false };
       this.lairs.push(lair);
-      const def = ENEMIES[this.zone.guardian];
-      const g = this.spawnEnemy(def, x, y, { hpMult: 6, elite: true, scale: 1.5 });
-      if (g) {
-        g.asleep = true;
-        g.lair = lair;
-        lair.guardian = g;
-      }
+      this.placeLair(lair, ...this.pointNear(1100, 2600, this.lairs));
     }
-
-    // supply caches
-    const cacheAt: [number, number][] = [];
-    for (let i = 0; i < 14; i++) {
-      const [x, y] = this.randomPoint(450, cacheAt, 400);
-      cacheAt.push([x, y]);
+    for (let i = 0; i < CACHES; i++) {
       const spr = new Sprite(this.pickupTex('cache'));
       spr.anchor.set(0.5);
-      spr.position.set(x, y);
       this.layers.pickups.addChild(spr);
-      this.caches.push({ x: spr.x, y: spr.y, sprite: spr, opened: false, label: null });
+      const c: Cache = { x: 0, y: 0, sprite: spr, opened: false, label: null };
+      this.caches.push(c);
+      this.placeCache(c, ...this.pointNear(450, 1600, this.caches));
     }
 
     // hero
@@ -583,7 +548,6 @@ export class Game {
 
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
     if (this.enemyCount >= MAX_ENEMIES) return null;
-    if (!opts.boss && def.shape !== 'muta') [x, y] = this.snapReachable(x, y);
     const { hp: hpScale, dmg: dmgScale } = this.enemyScale(this.time / 60);
     let e = this.enemyPool.pop();
     const shape = opts.boss?.shape ?? def.shape;
@@ -896,6 +860,8 @@ export class Game {
     }
     if (e.lair) {
       e.lair.cleared = true;
+      e.lair.respawnAt = this.time + 120;
+      e.lair.guardian = null;
       e.lair.sprite.alpha = 0.4;
       const rar = Math.min(4, Math.max(2, rollRarity(this.stats.luck + this.diff.luck + 0.5) + 1)) as Rarity;
       this.dropPickup('gear', e.x, e.y, 0, rollGear(this.race.id, rar, this.zone.tier));
@@ -1096,6 +1062,7 @@ export class Game {
       elites: this.elitesKilled,
       evolved: this.spells.filter((s) => s.evo).length,
       objectives: this.objectivesDone,
+      minerals: this.mineralsEarned,
       hero: this.hero.id,
       daily: this.daily,
       killedBy: won ? '' : this.lastHitBy,
@@ -1112,7 +1079,7 @@ export class Game {
     });
   }
 
-  /** Where the player is steering: keys / stick first, otherwise along the path to the move order. */
+  /** Where the player is steering: keys / stick first, otherwise straight to the move order. */
   moveDir(): [number, number] {
     const m = this.input.move();
     if (m[0] || m[1]) {
@@ -1130,7 +1097,6 @@ export class Game {
       this.moveTarget = null;
       return [0, 0];
     }
-    if (this.walk && d > 32 && this.walk.flowDir(p.x + this.mapOx, p.y + this.mapOy, this.dirBuf, 1)) return [this.dirBuf[0], this.dirBuf[1]];
     return [dx / d, dy / d];
   }
 
@@ -1644,7 +1610,7 @@ export class Game {
     const kinds: Objective['kind'][] = ['beacon', 'bounty', 'cores'];
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
     const a = Math.random() * Math.PI * 2;
-    const [x, y] = this.snapReachable(p.x + Math.cos(a) * 520, p.y + Math.sin(a) * 520);
+    const [x, y] = [p.x + Math.cos(a) * 520, p.y + Math.sin(a) * 520];
     const o: Objective = { kind, label: '', x, y, left: 60, progress: 0, need: 1, target: null, uid: -1, cores: [] };
     if (kind === 'beacon') {
       o.label = 'Hold the beacon';
@@ -1663,7 +1629,7 @@ export class Game {
       o.left = 50;
       for (let k = 0; k < 3; k++) {
         const b = a + (k - 1) * 0.9;
-        const [cx, cy] = this.snapReachable(p.x + Math.cos(b) * (380 + k * 120), p.y + Math.sin(b) * (380 + k * 120));
+        const [cx, cy] = [p.x + Math.cos(b) * (380 + k * 120), p.y + Math.sin(b) * (380 + k * 120)];
         o.cores.push({ x: cx, y: cy });
       }
       [o.x, o.y] = [o.cores[0].x, o.cores[0].y];
@@ -1845,12 +1811,9 @@ export class Game {
     if (order) {
       const W = this.app.screen.width;
       const H = this.app.screen.height;
-      this.moveTarget = this.snapReachable(this.camX + (order[0] - W / 2) / this.zoom, this.camY + (order[1] - H / 2) / this.zoom);
-      this.walk?.flowTo(this.moveTarget[0] + this.mapOx, this.moveTarget[1] + this.mapOy, 1, 1 << 30);
+      this.moveTarget = [this.camX + (order[0] - W / 2) / this.zoom, this.camY + (order[1] - H / 2) / this.zoom];
     }
     const [mx, my] = this.moveDir();
-    const px0 = p.x;
-    const py0 = p.y;
     if (p.dashT > 0) {
       p.dashT -= dt;
       p.x += p.dashVx * dt;
@@ -1867,14 +1830,6 @@ export class Game {
       p.x += mx * s.moveSpeed * dt;
       p.y += my * s.moveSpeed * dt;
       p.facing = Math.atan2(my, mx);
-    }
-    p.x = Math.max(this.bx0 + 20, Math.min(this.bx1 - 20, p.x));
-    p.y = Math.max(this.by0 + 20, Math.min(this.by1 - 20, p.y));
-    this.settle(p, px0, py0, 10);
-    const edge = Math.min(p.x - this.bx0, this.bx1 - p.x, p.y - this.by0, this.by1 - p.y);
-    if (edge < 300 && this.time >= this.edgeWarnAt) {
-      this.edgeWarnAt = this.time + 10;
-      this.hooks.toast('Edge of the zone: you can get pinned here. Head back toward the middle.', '#ff9a6a');
     }
     p.dashCd = Math.max(0, p.dashCd - dt);
     p.invuln = Math.max(0, p.invuln - dt);
@@ -2102,48 +2057,55 @@ export class Game {
     }
   }
 
-  /** True when a ground unit of radius r fits at the world point (always true without a real map). */
-  onGround(x: number, y: number, r: number): boolean {
-    return !this.walk || this.walk.fits(x + this.mapOx, y + this.mapOy, r);
-  }
-
-  /** True when the world point is on ground connected to the start. */
-  reachable(x: number, y: number): boolean {
-    return !this.walk || this.walk.reachable(x + this.mapOx, y + this.mapOy);
-  }
-
-  /** Undoes a move that ended inside a wall, sliding along it when one axis is free. */
-  private settle(o: { x: number; y: number }, ox: number, oy: number, r: number) {
-    if (!this.walk || this.onGround(o.x, o.y, r) || !this.onGround(ox, oy, r)) return;
-    if (this.onGround(o.x, oy, r)) o.y = oy;
-    else if (this.onGround(ox, o.y, r)) o.x = ox;
-    else {
-      o.x = ox;
-      o.y = oy;
+  /** Keeps one container of map doodads for every copy of the map overlapping the view (map pixels). */
+  private updateDoodadCopies(x0: number, y0: number, x1: number, y1: number) {
+    if (!this.doodads.length) return;
+    const W = this.periodW;
+    const H = this.periodH;
+    const i0 = Math.floor(x0 / W);
+    const i1 = Math.floor(x1 / W);
+    const j0 = Math.floor(y0 / H);
+    const j1 = Math.floor(y1 / H);
+    for (const [key, c] of this.doodadCopies) {
+      const i = (key % 4096) - 2048;
+      const j = Math.floor(key / 4096) - 2048;
+      if (i < i0 || i > i1 || j < j0 || j > j1) {
+        c.destroy({ children: true });
+        this.doodadCopies.delete(key);
+      }
     }
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const key = (j + 2048) * 4096 + i + 2048;
+        if (this.doodadCopies.has(key)) continue;
+        const c = new Container();
+        c.position.set(i * W - this.mapOx, j * H - this.mapOy);
+        for (const [x, y, t] of this.doodads) {
+          const s = new Sprite(t);
+          s.anchor.set(0.5);
+          s.position.set(x, y);
+          c.addChild(s);
+        }
+        this.layers.ground.addChildAt(c, 0);
+        this.doodadCopies.set(key, c);
+      }
   }
 
-  /** Nearest reachable world point to (x, y), or the point itself. */
-  private snapReachable(x: number, y: number): [number, number] {
-    if (!this.walk || this.reachable(x, y)) return [x, y];
-    const s = this.walk.nearestReachable(x + this.mapOx, y + this.mapOy, 24);
-    return s ? [s[0] - this.mapOx, s[1] - this.mapOy] : [x, y];
-  }
-
-  /** A random spot in the arena at least `minD` from the start and `gap` from the given points (best effort). */
-  private randomPoint(minD: number, others: [number, number][], gap: number): [number, number] {
-    const m = 150;
-    let best: [number, number] = [0, 0];
-    let bestScore = -Infinity;
-    for (let tries = 0; tries < 40; tries++) {
-      const x = this.bx0 + m + Math.random() * (this.bx1 - this.bx0 - m * 2);
-      const y = this.by0 + m + Math.random() * (this.by1 - this.by0 - m * 2);
-      if (!this.reachable(x, y)) continue;
-      const near = others.reduce((d, [ox, oy]) => Math.min(d, hyp(x - ox, y - oy)), Infinity);
-      const score = Math.min(0, hyp(x, y) - minD) * 4 + Math.min(0, near - gap);
-      if (score >= 0) return [x, y];
-      if (score > bestScore) {
-        bestScore = score;
+  /** A random spot between minD and maxD from the player, at least GAP from the other landmarks (best effort). */
+  private pointNear(minD: number, maxD: number, others: { x: number; y: number }[]): [number, number] {
+    const p = this.player;
+    let best: [number, number] = [p.x + minD, p.y];
+    let bestNear = -1;
+    for (let tries = 0; tries < 24; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = minD + Math.random() * (maxD - minD);
+      const x = p.x + Math.cos(a) * r;
+      const y = p.y + Math.sin(a) * r;
+      let near = Infinity;
+      for (const o of others) if (o.x || o.y) near = Math.min(near, hyp(x - o.x, y - o.y));
+      if (near >= GAP) return [x, y];
+      if (near > bestNear) {
+        bestNear = near;
         best = [x, y];
       }
     }
@@ -2155,14 +2117,8 @@ export class Game {
     const hw = this.app.screen.width / 2 / this.zoom;
     const hh = this.app.screen.height / 2 / this.zoom;
     const r = hyp(hw, hh) + 60;
-    for (let tries = 0; tries < 6; tries++) {
-      const a = Math.random() * Math.PI * 2;
-      const x = p.x + Math.cos(a) * r;
-      const y = p.y + Math.sin(a) * r;
-      if (x > this.bx0 && x < this.bx1 && y > this.by0 && y < this.by1 && this.reachable(x, y)) return [x, y];
-    }
     const a = Math.random() * Math.PI * 2;
-    return this.snapReachable(Math.max(this.bx0, Math.min(this.bx1, p.x + Math.cos(a) * r)), Math.max(this.by0, Math.min(this.by1, p.y + Math.sin(a) * r)));
+    return [p.x + Math.cos(a) * r, p.y + Math.sin(a) * r];
   }
 
   private updateEnemies(dt: number) {
@@ -2171,10 +2127,7 @@ export class Game {
     const hh = this.app.screen.height / 2 / this.zoom + 120;
     const farR = hyp(hw, hh) * 1.7;
     const damp = Math.exp(-7 * dt);
-    const walk = this.walk;
-    const buf = this.dirBuf;
-    if (walk) walk.flowTo(p.x + this.mapOx, p.y + this.mapOy);
-    this.grid.clear();
+    this.grid.recenter(p.x, p.y);
     for (let i = 0; i < this.enemyCount; i++) {
       const e = this.enemies[i];
       if (e.flash > 0) {
@@ -2213,15 +2166,8 @@ export class Game {
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const d = hyp(dx, dy) || 1;
-      const ground = !e.boss && e.def.shape !== 'muta';
-      const er = Math.min(10, e.radius * 0.5);
-      // ground units path around cliffs and water; fliers and bosses go straight
-      let ux = dx / d;
-      let uy = dy / d;
-      if (walk && ground && d > 40 && walk.flowDir(e.x + this.mapOx, e.y + this.mapOy, buf)) {
-        ux = buf[0];
-        uy = buf[1];
-      }
+      const ux = dx / d;
+      const uy = dy / d;
       if (e.boss) {
         this.updateBoss(e, e.boss, dt);
       } else {
@@ -2236,7 +2182,6 @@ export class Game {
           } else {
             e.x += (lx / ld) * e.speed * 1.5 * dt;
             e.y += (ly / ld) * e.speed * 1.5 * dt;
-            this.settle(e, ex0, ey0, er);
           }
           this.grid.insert(i, e.x, e.y);
           e.sprite.position.set(e.x, e.y);
@@ -2307,7 +2252,6 @@ export class Game {
       e.y += e.ky * dt;
       e.kx *= damp;
       e.ky *= damp;
-      if (ground) this.settle(e, ex0, ey0, er);
       e.moving = Math.abs(e.x - ex0) + Math.abs(e.y - ey0) > e.speed * dt * 0.3;
       // contact damage
       const cr = e.radius + 14;
@@ -2341,11 +2285,8 @@ export class Game {
             const dd = Math.sqrt(d2);
             const push = ((rr - dd) / dd) * sepK;
             const w = o.mass / (e.mass + o.mass);
-            const sx0 = e.x;
-            const sy0 = e.y;
             e.x += ox * push * w * 2;
             e.y += oy * push * w * 2;
-            if (this.walk && e.def.shape !== 'muta') this.settle(e, sx0, sy0, Math.min(10, e.radius * 0.5));
           }
         }
       }
@@ -2592,61 +2533,75 @@ export class Game {
       }
     }
 
-    // supply caches
-    this.cacheCost = this.cacheCostNow;
+    // supply caches: walk over one for a free module, no shop and no pause
     for (const c of this.caches) {
-      if (c.opened && c.restockAt !== undefined && this.time >= c.restockAt) {
-        // caches restock, so minerals stay worth collecting late in the run
-        c.opened = false;
-        c.sprite.alpha = 1;
-      }
-      if (c.opened) continue;
-      if (Math.abs(c.x - p.x) > 40 || Math.abs(c.y - p.y) > 40) {
-        if (c.shopAt === -1) c.shopAt = 0; // left the cache: it can open again next visit
+      const far = Math.abs(c.x - p.x) > LANDMARK_FAR || Math.abs(c.y - p.y) > LANDMARK_FAR;
+      if (c.opened ? this.time >= (c.restockAt ?? 0) : far) {
+        this.placeCache(c, ...this.pointNear(c.opened ? 900 : 1400, 2200, this.caches));
         continue;
       }
-      if (c.shopAt === -1) continue; // still standing on it after closing the shop
-      c.shopAt = -1;
-      this.openCacheShop(c);
+      if (c.opened || Math.abs(c.x - p.x) > 36 || Math.abs(c.y - p.y) > 36) continue;
+      this.openCache(c);
+    }
+    // lairs the player left behind turn up again ahead; slain ones come back after a while
+    for (const l of this.lairs) {
+      const g = l.guardian;
+      const far = Math.abs(l.x - p.x) > LANDMARK_FAR + 800 || Math.abs(l.y - p.y) > LANDMARK_FAR + 800;
+      if (l.cleared ? this.time >= (l.respawnAt ?? 0) && far : far && (!g || g.asleep)) {
+        if (g && !l.cleared && g.lair === l && g.idx >= 0) this.removeEnemyAt(g.idx);
+        this.placeLair(l, ...this.pointNear(1500, 2600, this.lairs));
+      }
     }
   }
 
-  /** Supply caches sell run-only modules (Azeroth Survivors' jewelry), or a gear requisition. */
-  private openCacheShop(c: Cache) {
-    const zi = Math.max(0, ZONES.findIndex((z) => z.id === this.zone.id));
+  private placeCache(c: Cache, x: number, y: number) {
+    c.x = x;
+    c.y = y;
+    c.opened = false;
+    c.sprite.position.set(x, y);
+    c.sprite.alpha = 1;
+  }
+
+  private placeLair(l: Lair, x: number, y: number) {
+    l.x = x;
+    l.y = y;
+    l.cleared = false;
+    l.scaled = false;
+    l.sprite.position.set(x, y);
+    l.sprite.alpha = 1;
+    l.guardian = null;
+    const g = this.spawnEnemy(ENEMIES[this.zone.guardian], x, y, { hpMult: 6, elite: true, scale: 1.5 });
+    if (g) {
+      g.asleep = true;
+      g.lair = l;
+      l.guardian = g;
+    }
+  }
+
+  /** Supply caches hand out a run-only module (Azeroth Survivors' jewelry) on contact. */
+  private openCache(c: Cache) {
+    c.opened = true;
+    c.restockAt = this.time + CACHE_RESTOCK;
+    c.sprite.alpha = 0.3;
     const owned = new Set(this.modules.map((m) => m.id));
     const pool = MODULES.filter((m) => !owned.has(m.id));
     const luck = this.stats.luck + this.diff.luck;
-    const offers: CacheOffer[] = [];
-    while (offers.length < 3 && pool.length) {
-      const w = pool.map((m) => [0, 6, 3.2, 1.4 * (1 + luck), 0.5 * (1 + luck * 2)][m.rarity]);
-      let r = Math.random() * w.reduce((x, y) => x + y, 0);
-      let i = 0;
-      while (i < pool.length - 1 && (r -= w[i]) > 0) i++;
-      const mod = pool.splice(i, 1)[0];
-      offers.push({ mod, price: modulePrice(mod, zi) });
+    sfx('level');
+    this.addFx(fx.ring(), c.x, c.y, 0xffd34d, 0.1, 1.4, 0.35, 0.9);
+    if (!pool.length) {
+      // every module taken: a field medkit and a magnet instead
+      this.dropPickup('medkit', c.x - 12, c.y, 0);
+      this.dropPickup('magnet', c.x + 12, c.y, 0);
+      return;
     }
-    sfx('select');
-    this.paused = true;
-    this.hooks.cacheShop(offers, this.cacheCost, (o) => {
-      const p = this.player;
-      if (o === 'gear') {
-        if (p.minerals < this.cacheCost) return;
-        p.minerals -= this.cacheCost;
-        // a flat step: the old x1.5 growth left players ending runs with hundreds of unspent minerals
-        this.cacheCost += 20;
-        const rar = Math.max(1, rollRarity(luck + 0.2)) as Rarity;
-        this.timers.push({ at: this.time, fn: () => this.hooks.gear(rollGear(this.race.id, rar, this.zone.tier)) });
-      } else if (o) {
-        if (p.minerals < o.price) return;
-        p.minerals -= o.price;
-        this.addModule(o.mod);
-        this.hooks.toast(`${o.mod.name}: ${o.mod.desc}`, '#7ad8ff');
-      } else return;
-      c.opened = true;
-      c.restockAt = this.time + 240;
-      c.sprite.alpha = 0.35;
-    });
+    const w = pool.map((m) => [0, 6, 3.2, 1.4 * (1 + luck), 0.5 * (1 + luck * 2)][m.rarity]);
+    let r = Math.random() * w.reduce((x, y) => x + y, 0);
+    let i = 0;
+    while (i < pool.length - 1 && (r -= w[i]) > 0) i++;
+    const mod = pool[i];
+    this.addModule(mod);
+    this.floatText(c.x, c.y - 30, mod.name, parseInt(RARITY_COLORS[mod.rarity].slice(1), 16), 1);
+    this.hooks.toast(`${mod.icon} ${mod.name}: ${mod.desc}`, RARITY_COLORS[mod.rarity]);
   }
 
   modules: ModuleDef[] = [];
@@ -2667,6 +2622,7 @@ export class Game {
     switch (k.kind) {
       case 'mineral':
         p.minerals += k.value;
+        this.mineralsEarned += k.value;
         sfx('pickup');
         break;
       case 'medkit':
@@ -2682,10 +2638,6 @@ export class Game {
         this.paused = true;
         break;
     }
-  }
-
-  get cacheCostNow() {
-    return this.cacheCost >= 0 ? this.cacheCost : 25 + 10 * Math.max(0, ZONES.findIndex((z) => z.id === this.zone.id));
   }
 
   // ------------------------------------------------------------ render
@@ -2717,6 +2669,7 @@ export class Game {
       const cx = this.camX + this.mapOx;
       const cy = this.camY + this.mapOy;
       this.mapGround.update(cx - hw, cy - hh, cx + hw, cy + hh, this.time < 0.1 ? Infinity : 2);
+      this.updateDoodadCopies(cx - hw - 400, cy - hh - 400, cx + hw + 400, cy + hh + 400);
     }
 
     // hero
@@ -2750,13 +2703,22 @@ export class Game {
       else m.sprite.rotation = m.angle;
     }
 
-    // props culling
+    // props culling; scattered props wrap around the camera so they never run out
     const hw = W / 2 / z + 80;
     const hh = H / 2 / z + 80;
     for (const s of this.props) {
+      if (s.x - this.camX > WORLD) s.x -= WORLD * 2;
+      else if (this.camX - s.x > WORLD) s.x += WORLD * 2;
+      if (s.y - this.camY > WORLD) s.y -= WORLD * 2;
+      else if (this.camY - s.y > WORLD) s.y += WORLD * 2;
       const v = onScreen(s.visible, s.x - this.camX, s.y - this.camY, hw, hh);
       if (s.visible !== v) s.visible = v;
     }
+    for (const c of this.doodadCopies.values())
+      for (const s of c.children) {
+        const v = onScreen(s.visible, s.x + c.x - this.camX, s.y + c.y - this.camY, hw, hh);
+        if (s.visible !== v) s.visible = v;
+      }
 
     if (this.paused || this.over) return;
 
@@ -2870,8 +2832,8 @@ export class Game {
     const out: { x: number; y: number; kind: 'boss' | 'lair' | 'cache' | 'objective' }[] = [];
     if (this.objective) out.push({ x: this.objective.x, y: this.objective.y, kind: 'objective' });
     for (const b of this.bosses) out.push({ x: b.x, y: b.y, kind: 'boss' });
-    for (const l of this.lairs) if (!l.cleared && near(l.x, l.y, 1800)) out.push({ x: l.x, y: l.y, kind: 'lair' });
-    for (const c of this.caches) if (!c.opened && near(c.x, c.y, 1400)) out.push({ x: c.x, y: c.y, kind: 'cache' });
+    for (const l of this.lairs) if (!l.cleared && near(l.x, l.y, 2800)) out.push({ x: l.x, y: l.y, kind: 'lair' });
+    for (const c of this.caches) if (!c.opened && near(c.x, c.y, 2400)) out.push({ x: c.x, y: c.y, kind: 'cache' });
     return out;
   }
 

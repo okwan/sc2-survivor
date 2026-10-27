@@ -10,7 +10,7 @@ import { heroTexture, initTextures } from './render/textures';
 import { bwSprite, ensureZoneFiles, initBw, prefetchTerrain } from './bw/assets';
 import { applyBwChrome } from './bw/ui';
 import { Hud } from './ui/hud';
-import { showCacheShop, showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
+import { showGear, showLevelUp, showMenu, showPause, showResults, showVictory, type Shell } from './ui/screens';
 import './ui/style.css';
 
 async function boot() {
@@ -129,7 +129,6 @@ async function boot() {
           setTimeout(() => showResults(shell, r, rw), r.won ? 300 : 900);
         },
         toast: (msg, color) => hud?.toast(msg, color),
-        cacheShop: (offers, gearCost, buy) => openDialog((done) => showCacheShop(shell, g, offers, gearCost, buy, done)),
       }, daily);
       game = g;
       app.stage.addChild(g.root);
