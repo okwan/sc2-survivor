@@ -16,6 +16,7 @@ export interface BossState {
   chargeDy: number;
   windup: number; // telegraph time before a charge
   final: boolean;
+  phase2: boolean; // below half health
 }
 
 export interface Enemy {
@@ -56,6 +57,7 @@ export interface Enemy {
   affixes: AffixId[]; // elite modifiers
   shieldHp: number; // Shielded affix: absorbs damage before health
   baseTint: number; // tint when not flashing
+  revived: boolean; // Just Die! mutator: already came back once
 }
 
 export interface Projectile {

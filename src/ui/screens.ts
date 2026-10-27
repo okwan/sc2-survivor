@@ -2,6 +2,7 @@ import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
 import { DIFFICULTIES } from '../data/difficulty';
+import { MAX_MUTATORS, MUTATORS } from '../data/mutators';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -70,6 +71,7 @@ export function showMenu(shell: Shell) {
     <div class="section-title">Choose your battlefield</div>
     <div class="zones"></div>
     <div class="diffs"></div>
+    <div class="mutators"></div>
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
@@ -132,7 +134,10 @@ export function showMenu(shell: Shell) {
   // difficulty: Hard and Brutal open on zones this race has already cleared
   const diffsEl = inner.querySelector('.diffs')!;
   const zoneCleared = ZONES.findIndex((z) => z.id === save.lastZone) < rs.zonesCleared;
-  if (!zoneCleared) save.difficulty = 0;
+  if (!zoneCleared) {
+    save.difficulty = 0;
+    save.mutators = [];
+  }
   for (const d of DIFFICULTIES) {
     const b = document.createElement('button');
     const locked = d.id > 0 && !zoneCleared;
@@ -148,6 +153,27 @@ export function showMenu(shell: Shell) {
       showMenu(shell);
     };
     diffsEl.append(b);
+  }
+  // mutators, SC2 co-op style: up to three on a cleared zone, each adding rewards
+  const mutEl = inner.querySelector('.mutators') as HTMLElement;
+  if (zoneCleared) {
+    mutEl.innerHTML = `<div class="mut-title">Mutators <span>${save.mutators.length}/${MAX_MUTATORS} · bonus rewards</span></div>`;
+    for (const m of MUTATORS) {
+      const on = save.mutators.includes(m.id);
+      const b = document.createElement('button');
+      b.className = 'mut' + (on ? ' sel' : '');
+      b.title = m.desc;
+      b.innerHTML = `${m.icon} ${m.name} <span>+${Math.round(m.bonus * 100)}%</span>`;
+      b.onclick = () => {
+        if (on) save.mutators = save.mutators.filter((x) => x !== m.id);
+        else if (save.mutators.length < MAX_MUTATORS) save.mutators = [...save.mutators, m.id];
+        else return;
+        persist();
+        sfx('select');
+        showMenu(shell);
+      };
+      mutEl.append(b);
+    }
   }
 
   inner.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
@@ -814,7 +840,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const maxDmg = Math.max(1, ...r.damage.map((d) => d.dmg));
   const [have, need] = nextPointProgress(r.race);
   box.innerHTML = `<h2 style="color:${won ? 'var(--gold)' : 'var(--danger)'}">${won ? 'Victory' : 'Defeated'}</h2>
-    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.difficulty.id ? ` · ${r.difficulty.name}` : ''}${r.endless ? ' · Endless' : ''}</div>
+    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.difficulty.id ? ` · ${r.difficulty.name}` : ''}${r.mutators.length ? ` · ${r.mutators.length} mutator${r.mutators.length > 1 ? 's' : ''}` : ''}${r.endless ? ' · Endless' : ''}</div>
     ${!won && r.killedBy ? `<div style="margin-top:4px">Killed by <b style="color:var(--danger)">${r.killedBy}</b></div>` : ''}
     <table style="margin:10px 0"><tr><td>Time survived</td><td>${fmtTime(r.time)}</td></tr><tr><td>Level</td><td>${r.level}</td></tr><tr><td>Kills</td><td>${r.kills}</td></tr><tr><td>Bosses</td><td>${r.bosses}</td></tr></table>
     <div class="section-title" style="margin:10px 0 4px">Damage</div>

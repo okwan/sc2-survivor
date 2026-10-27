@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 
 import { AFFIXES, AFFIX_BY_ID, type AffixId } from '../data/affixes';
 import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
 import { MODULES, modulePrice, type ModuleDef } from '../data/modules';
+import { ZONE_EVENTS, type ZoneEvent } from '../data/mutators';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
@@ -41,6 +42,7 @@ export interface RunResult {
   race: RaceId;
   endless: boolean;
   difficulty: DifficultyDef;
+  mutators: string[];
   damage: { name: string; icon: string; dmg: number }[];
   killedBy: string;
 }
@@ -132,6 +134,10 @@ export class Game {
   barrierSprite!: Sprite;
 
   diff: DifficultyDef = DIFFICULTIES[save.difficulty] ?? DIFFICULTIES[0];
+  mutators = new Set<string>(save.mutators);
+  private nextEvent = 105;
+  private mutT = { rift: 60, lava: 30, missiles: 40 };
+  private rifts: { e: Enemy; uid: number; next: number }[] = [];
   time = 0;
   /** Real seconds left of a hit-stop freeze (boss kills) and of slow motion (elite kills). */
   private hitstop = 0;
@@ -486,7 +492,7 @@ export class Game {
         uid: 0, idx: -1, def, x, y, kx: 0, ky: 0, hp: 1, maxHp: 1, speed: 1, damage: 1, radius: 1, mass: 1, xp: 1, sprite: spr, flash: 0, slow: 0,
         burnDps: 0, burnTime: 0, burnTick: 0, contactCd: 0, shotTimer: 0, elite: false, boss: null, lair: null, asleep: false,
         hitStamp: new Float32Array(MAX_SLOTS).fill(-99), charge: 0, windup: 0, cdx: 0, cdy: 0, facing: 0, bw: null, bwScale: 1,
-        affixes: [], shieldHp: 0, baseTint: 0xffffff,
+        affixes: [], shieldHp: 0, baseTint: 0xffffff, revived: false,
       };
     }
     e.uid = this.uid++;
@@ -507,6 +513,7 @@ export class Game {
     e.hitStamp.fill(-99);
     e.affixes.length = 0;
     e.shieldHp = 0;
+    e.revived = false;
     e.baseTint = opts.elite ? 0xffe9a0 : 0xffffff;
     if (opts.boss) {
       const b = opts.boss;
@@ -518,11 +525,11 @@ export class Game {
       e.radius = b.radius;
       e.mass = 20;
       e.xp = 60;
-      e.boss = { def: b, abilityTimer: 2.5, enraged: false, charging: 0, chargeDx: 0, chargeDy: 0, windup: 0, final: !!opts.final };
+      e.boss = { def: b, abilityTimer: 2.5, enraged: false, charging: 0, chargeDx: 0, chargeDy: 0, windup: 0, final: !!opts.final, phase2: false };
       this.bosses.push(e);
     } else {
       e.maxHp = def.hp * hpScale * (opts.hpMult ?? 1);
-      e.speed = def.speed * (0.92 + Math.random() * 0.16);
+      e.speed = def.speed * (0.92 + Math.random() * 0.16) * (this.mutators.has('speed') ? 1.3 : 1);
       e.damage = def.damage * dmgScale;
       e.radius = def.radius * (opts.scale ?? 1);
       e.mass = (def.mass ?? 1) * (opts.elite ? 4 : 1);
@@ -530,6 +537,8 @@ export class Game {
       e.boss = null;
     }
     e.hp = e.maxHp;
+    if (this.mutators.has('barrier') && (opts.elite || opts.boss)) e.shieldHp = e.maxHp * 0.5;
+    else if (this.mutators.has('power') && !opts.boss) e.shieldHp = e.maxHp * 0.3;
     const spr = e.sprite;
     spr.texture = tex;
     spr.visible = true;
@@ -748,6 +757,15 @@ export class Game {
   private killEnemy(e: Enemy, slot: number) {
     const i = e.idx;
     if (i < 0 || i >= this.enemyCount || this.enemies[i] !== e) return;
+    if (this.mutators.has('justdie') && !e.revived && !e.boss && !e.lair) {
+      e.revived = true;
+      e.hp = e.maxHp * 0.4;
+      this.addFx(fx.ring(), e.x, e.y, 0x9a7cff, 0.05, 0.4, 0.3, 0.9);
+      return;
+    }
+    if (this.mutators.has('infested') && e.def.id !== 'broodling' && !e.boss && Math.random() < 0.12 && this.enemyCount < MAX_ALIVE) {
+      for (let k = 0; k < 2; k++) this.timers.push({ at: this.time, fn: () => this.spawnEnemy(ENEMIES.broodling, e.x + (k ? 14 : -14), e.y) });
+    }
     this.player.kills++;
     if (this.flags.has('leech')) this.heal(0.5);
     const affixBonus = 1 + e.affixes.length * 0.5;
@@ -961,6 +979,7 @@ export class Game {
       race: this.race.id,
       endless: this.endless,
       difficulty: this.diff,
+      mutators: [...this.mutators],
       killedBy: won ? '' : this.lastHitBy,
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
@@ -1259,6 +1278,19 @@ export class Game {
     const dx = p.x - e.x;
     const dy = p.y - e.y;
     const d = hyp(dx, dy) || 1;
+    if (!b.phase2 && e.hp < e.maxHp * 0.5) {
+      b.phase2 = true;
+      b.abilityTimer = 0.6;
+      if (b.def.split) {
+        const [id, n] = b.def.split;
+        for (let k = 0; k < n; k++) {
+          const a = (k / n) * Math.PI * 2;
+          const c = this.spawnEnemy(ENEMIES[id], e.x + Math.cos(a) * (e.radius + 50), e.y + Math.sin(a) * (e.radius + 50), { elite: true, hpMult: 2, scale: 1.2 });
+          if (c) c.baseTint = c.sprite.tint = b.def.color;
+        }
+        this.hooks.toast(`${b.def.name} splits apart!`, '#ff5050');
+      }
+    }
     if (!b.enraged && e.hp < e.maxHp * 0.3) {
       b.enraged = true;
       e.sprite.tint = 0xff7070;
@@ -1318,7 +1350,7 @@ export class Game {
         const ty = p.y;
         const r = b.enraged ? 170 : 130;
         this.telegraphs.push({
-          kind: 'circle', x: tx, y: ty, r, dx: 0, dy: 0, len: 0, t: 0, max: 0.8, damage: e.damage * 1.2, friendly: false,
+          kind: 'circle', x: tx, y: ty, r, dx: 0, dy: 0, len: 0, t: 0, max: b.enraged ? 0.6 : 0.8, damage: e.damage * 1.2, friendly: false,
           onDone: () => {
             this.addFx(fx.soft(), tx, ty, 0xff6030, 0.5, (r * 2.2) / 128, 0.4, 0.9);
             this.shake(8);
@@ -1326,6 +1358,40 @@ export class Game {
             if (hyp(this.player.x - tx, this.player.y - ty) < r) this.damagePlayer(e.damage * 1.2, b.def.name);
           },
         });
+        break;
+      }
+      case 'pods': {
+        // drop pods land around the hero, hurt on impact, and unload the boss's troops
+        const def = ENEMIES[b.def.summon ?? 'zergling'];
+        const n = b.enraged ? 4 : 3;
+        for (let k = 0; k < n; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = 120 + Math.random() * 180;
+          const x = p.x + Math.cos(a) * d;
+          const y = p.y + Math.sin(a) * d;
+          this.hazard(x, y, 90, 1.3, e.damage, b.def.name, false, () => {
+            for (let j = 0; j < 3; j++) this.spawnEnemy(def, x + (j - 1) * 22, y + (j % 2) * 18);
+          });
+        }
+        break;
+      }
+      case 'cross': {
+        // beams sweep out from the boss along a cross, alternating straight and diagonal
+        const a0 = (Math.round(this.time) % 2) * (Math.PI / 4);
+        const arms = b.enraged ? 8 : 4;
+        for (let k = 0; k < arms; k++) {
+          const a = a0 + (k / arms) * Math.PI * 2;
+          this.lineHazard(e.x, e.y, Math.cos(a), Math.sin(a), 760, 26, 1.0, e.damage * 1.1, b.def.name);
+        }
+        break;
+      }
+      case 'voidzones': {
+        const n = b.enraged ? 7 : 5;
+        for (let k = 0; k < n; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = k === 0 ? 0 : 80 + Math.random() * 240;
+          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 75, 1.1, e.damage, b.def.name, false);
+        }
         break;
       }
       case 'summon': {
@@ -1337,6 +1403,140 @@ export class Game {
           if (i % 2) this.spawnEnemy(def, p.x + Math.cos(a) * 340, p.y + Math.sin(a) * 340);
           else this.spawnEnemy(def, e.x + Math.cos(a) * (e.radius + 40), e.y + Math.sin(a) * (e.radius + 40));
         }
+        break;
+      }
+    }
+  }
+
+  /** A telegraphed circle that hurts the hero (and enemies, if hitsEnemies) when its fuse runs out. */
+  private hazard(x: number, y: number, r: number, fuse: number, dmg: number, by: string, hitsEnemies: boolean, then?: () => void, color = 0xff6030) {
+    this.telegraphs.push({
+      kind: 'circle', x, y, r, dx: 0, dy: 0, len: 0, t: 0, max: fuse, damage: dmg, friendly: false,
+      onDone: () => {
+        this.addFx(fx.soft(), x, y, color, 0.4, (r * 2.2) / 128, 0.4, 0.9);
+        if (hyp(this.player.x - x, this.player.y - y) < r) this.damagePlayer(dmg, by);
+        if (hitsEnemies) this.forEnemiesInRadius(x, y, r, (o) => this.hit(o, dmg * 3, -1, { quiet: true, noCrit: true }));
+        this.shake(4);
+        then?.();
+      },
+    });
+  }
+
+  /** A telegraphed beam from (x, y) along (dx, dy). */
+  private lineHazard(x: number, y: number, dx: number, dy: number, len: number, w: number, fuse: number, dmg: number, by: string) {
+    this.telegraphs.push({
+      kind: 'line', x, y, r: w, dx, dy, len, t: 0, max: fuse, damage: dmg, friendly: false,
+      onDone: () => {
+        const rx = this.player.x - x;
+        const ry = this.player.y - y;
+        const along = rx * dx + ry * dy;
+        if (along > 0 && along < len && Math.abs(rx * dy - ry * dx) < w + 12) this.damagePlayer(dmg, by);
+        for (let k = 1; k <= 6; k++) this.addFx(fx.soft(), x + dx * (len * k) / 6, y + dy * (len * k) / 6, 0xff4060, 0.3, 0.9, 0.3, 0.8);
+      },
+    });
+  }
+
+  /** Zone events and mutators: something different happens every minute or so. */
+  private updateEvents() {
+    const t = this.time;
+    if (t >= this.nextEvent && !this.endless) {
+      this.nextEvent = t + 70 + Math.random() * 20;
+      const list = ZONE_EVENTS[this.zone.id] ?? ['rush'];
+      this.zoneEvent(list[Math.floor(Math.random() * list.length)]);
+    }
+    const mt = this.mutT;
+    if (this.mutators.has('voidrifts') && t >= mt.rift) {
+      mt.rift = t + 45;
+      this.zoneEvent('rift');
+    }
+    if (this.mutators.has('lava') && t >= mt.lava) {
+      mt.lava = t + 7;
+      const p = this.player;
+      const dmg = 14 * this.enemyScale(t / 60).dmg;
+      for (let k = 0; k < 3; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = k === 0 ? 0 : 60 + Math.random() * 160;
+        this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 70, 1.2, dmg, 'Lava Burst', true, undefined, 0xff7020);
+      }
+    }
+    if (this.mutators.has('missiles') && t >= mt.missiles) {
+      mt.missiles = t + 9;
+      this.hazard(this.player.x, this.player.y, 110, 1.6, 22 * this.enemyScale(t / 60).dmg, 'Missile Command', true, undefined, 0xffc040);
+    }
+    // void rifts pour out shards until destroyed
+    for (let i = this.rifts.length - 1; i >= 0; i--) {
+      const r = this.rifts[i];
+      if (r.e.hp <= 0 || r.e.uid !== r.uid) {
+        this.rifts.splice(i, 1);
+        continue;
+      }
+      if (t >= r.next) {
+        r.next = t + 2.5;
+        for (let k = 0; k < 3; k++) this.spawnEnemy(ENEMIES.hybridling, r.e.x + (Math.random() - 0.5) * 60, r.e.y + (Math.random() - 0.5) * 60);
+      }
+    }
+  }
+
+  private zoneEvent(ev: ZoneEvent) {
+    const p = this.player;
+    const sc = this.enemyScale(this.time / 60).dmg;
+    const toast = (msg: string, col = '#ff8040') => this.hooks.toast(msg, col);
+    switch (ev) {
+      case 'overlord': {
+        const a = Math.random() * Math.PI * 2;
+        const x = p.x + Math.cos(a) * 320;
+        const y = p.y + Math.sin(a) * 320;
+        let wave = this.zone.waves[0];
+        for (const w of this.zone.waves) if (this.time / 60 >= w.from) wave = w;
+        const def = ENEMIES[wave.pool[0][0]];
+        this.hazard(x, y, 110, 1.6, 10 * sc, 'Overlord drop', false, () => {
+          for (let k = 0; k < 12; k++) {
+            const b = (k / 12) * Math.PI * 2;
+            this.spawnEnemy(def, x + Math.cos(b) * 50, y + Math.sin(b) * 50);
+          }
+        }, 0xc08040);
+        toast('Overlord drop!');
+        break;
+      }
+      case 'rush': {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.max(this.app.screen.width, this.app.screen.height) / this.zoom * 0.65;
+        for (let k = 0; k < 30; k++) {
+          const s = (k - 15) * 0.035;
+          this.spawnEnemy(ENEMIES.zergling, p.x + Math.cos(a + s) * (r + (k % 3) * 30), p.y + Math.sin(a + s) * (r + (k % 3) * 30));
+        }
+        toast('Zerg rush incoming!');
+        break;
+      }
+      case 'lava':
+        for (let k = 0; k < 7; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = k === 0 ? 0 : 80 + Math.random() * 260;
+          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 85, 1.3, 16 * sc, 'Lava eruption', true, undefined, 0xff7020);
+        }
+        toast('The ground erupts! Lava also burns the Swarm.');
+        break;
+      case 'storm':
+        for (let k = 0; k < 6; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = k === 0 ? 0 : 90 + Math.random() * 280;
+          this.hazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 100, 1.2, 14 * sc, 'Psionic Storm', true, undefined, 0x9a7cff);
+        }
+        toast('Psionic storms rain down! Lure enemies into them.', '#b48cff');
+        break;
+      case 'nuke':
+        this.hazard(p.x, p.y, 230, 3, 45 * sc, 'Tactical Nuke', true, () => this.shake(18), 0xffe0a0);
+        toast('Nuclear launch detected.', '#ff4040');
+        break;
+      case 'rift': {
+        const a = Math.random() * Math.PI * 2;
+        const e = this.spawnEnemy(ENEMIES.hybrid, p.x + Math.cos(a) * 380, p.y + Math.sin(a) * 380, { elite: true, hpMult: 1.5, scale: 1.3 });
+        if (e) {
+          e.speed = 0;
+          e.baseTint = e.sprite.tint = 0x9a4aff;
+          this.rifts.push({ e, uid: e.uid, next: this.time + 1 });
+        }
+        toast('A void rift tears open! Destroy it to stop the shards.', '#b48cff');
         break;
       }
     }
@@ -1486,6 +1686,7 @@ export class Game {
 
     // ---- director
     this.direct(dt);
+    this.updateEvents();
 
     // ---- enemies
     this.updateEnemies(dt);

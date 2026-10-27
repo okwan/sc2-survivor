@@ -145,6 +145,13 @@ kbd {
 .diff span { font-size: 12px; color: var(--muted); }
 .diff.sel { border-color: var(--dc); box-shadow: 0 0 16px -6px var(--dc); }
 .diff.locked { opacity: 0.45; cursor: not-allowed; }
+.mutators { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.mutators:empty { display: none; }
+.mut-title { width: 100%; font-size: 13px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+.mut-title span { letter-spacing: 0; text-transform: none; }
+.mut { padding: 5px 9px; font-size: 13px; background: var(--panel-2); border: 1px solid var(--line); }
+.mut span { color: var(--gold); font-weight: 700; }
+.mut.sel { border-color: #ff8040; box-shadow: 0 0 12px -4px #ff8040; color: #ffd0b0; }
 .menu-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
 .menu-actions .btn.primary { font-size: 22px; padding: 14px 44px; }
 .footer { text-align: center; margin-top: 28px; font-size: 12px; color: #5a6a7a; }

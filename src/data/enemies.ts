@@ -36,7 +36,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
   hybridling: { id: 'hybridling', name: 'Void Shard', shape: 'hybrid', color: 0x2ad4b0, hp: 30, speed: 125, damage: 8, radius: 13, xp: 2, behavior: 'chase' },
 };
 
-export type BossAbility = 'burst' | 'charge' | 'summon' | 'slam' | 'barrage';
+/** pods: drop pods land around you and unload; cross: beams sweep out from the boss; voidzones: void eruptions around you. */
+export type BossAbility = 'burst' | 'charge' | 'summon' | 'slam' | 'barrage' | 'pods' | 'cross' | 'voidzones';
 
 export interface BossDef {
   id: string;
@@ -50,6 +51,8 @@ export interface BossDef {
   radius: number;
   abilities: BossAbility[];
   summon?: string;
+  /** At half health the boss splits off elite copies of this unit (Ulrezaj's Dark Archons). */
+  split?: [string, number];
 }
 
 export interface ZoneDef {
@@ -83,11 +86,11 @@ export const ZONES: ZoneDef[] = [
     elite: 'ultralisk', guardian: 'ultralisk',
     bosses: [
       { id: 'b1', name: 'Kukulza Larva', title: 'Brood Mother', shape: 'muta', color: 0xb06ad0, hp: 1600, speed: 90, damage: 18, radius: 40, abilities: ['burst', 'summon'], summon: 'zergling' },
-      { id: 'b2', name: 'Hunter Killer', title: 'Elite Hydralisk', shape: 'hydra', color: 0xd04a8a, hp: 3200, speed: 100, damage: 20, radius: 38, abilities: ['barrage', 'charge'] },
+      { id: 'b2', name: 'Hunter Killer', title: 'Elite Hydralisk', shape: 'hydra', color: 0xd04a8a, hp: 3200, speed: 100, damage: 20, radius: 38, abilities: ['barrage', 'charge', 'cross'] },
       { id: 'b3', name: 'Devourer Queen', title: 'Hive Matriarch', shape: 'roach', color: 0xc07030, hp: 5200, speed: 85, damage: 24, radius: 44, abilities: ['slam', 'summon', 'burst'], summon: 'baneling' },
       { id: 'b4', name: 'Torrasque', title: 'Ultralisk Alpha', shape: 'ultra', color: 0xe0b080, hp: 8000, speed: 95, damage: 30, radius: 52, abilities: ['charge', 'slam'] },
     ],
-    final: { id: 'bf', name: 'Cerebrate Zasz', title: 'Overmind\'s Voice', shape: 'ultra', color: 0x9a2ad0, hp: 16000, speed: 75, damage: 34, radius: 64, abilities: ['burst', 'summon', 'slam', 'barrage'], summon: 'hydralisk' },
+    final: { id: 'bf', name: 'Cerebrate Zasz', title: 'Overmind\'s Voice', shape: 'ultra', color: 0x9a2ad0, hp: 16000, speed: 75, damage: 34, radius: 64, abilities: ['burst', 'summon', 'slam', 'barrage', 'pods'], summon: 'hydralisk', split: ['ultralisk', 2] },
   },
   {
     id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 16,
@@ -106,7 +109,7 @@ export const ZONES: ZoneDef[] = [
       { id: 'c3', name: 'Dehaka\'s Brood', title: 'Primal Devourer', shape: 'roach', color: 0xd0a040, hp: 7200, speed: 95, damage: 28, radius: 46, abilities: ['slam', 'charge', 'summon'], summon: 'roach' },
       { id: 'c4', name: 'Omegalisk', title: 'Apex Strain', shape: 'ultra', color: 0xff9060, hp: 11000, speed: 100, damage: 34, radius: 56, abilities: ['charge', 'slam', 'burst'] },
     ],
-    final: { id: 'cf', name: 'Queen of Blades', title: 'Sovereign of the Swarm', shape: 'hydra', color: 0xc040ff, hp: 24000, speed: 110, damage: 38, radius: 54, abilities: ['charge', 'burst', 'summon', 'barrage'], summon: 'mutalisk' },
+    final: { id: 'cf', name: 'Queen of Blades', title: 'Sovereign of the Swarm', shape: 'hydra', color: 0xc040ff, hp: 24000, speed: 110, damage: 38, radius: 54, abilities: ['charge', 'burst', 'summon', 'cross', 'voidzones'], summon: 'mutalisk' },
   },
   {
     id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 18,
@@ -126,7 +129,7 @@ export const ZONES: ZoneDef[] = [
       { id: 'a3', name: 'Dark Archon', title: 'Mind of the Void', shape: 'archon', color: 0x8040ff, hp: 9800, speed: 80, damage: 32, radius: 48, abilities: ['burst', 'summon', 'slam'], summon: 'hybridling' },
       { id: 'a4', name: 'Maar', title: 'Hybrid Destroyer', shape: 'hybrid', color: 0x30ffc0, hp: 14000, speed: 95, damage: 38, radius: 56, abilities: ['charge', 'barrage', 'burst'] },
     ],
-    final: { id: 'af', name: 'Ulrezaj', title: 'Archon of Shadows', shape: 'archon', color: 0x5020c0, hp: 34000, speed: 85, damage: 44, radius: 66, abilities: ['burst', 'barrage', 'summon', 'slam'], summon: 'zealot' },
+    final: { id: 'af', name: 'Ulrezaj', title: 'Archon of Shadows', shape: 'archon', color: 0x5020c0, hp: 34000, speed: 85, damage: 44, radius: 66, abilities: ['burst', 'barrage', 'summon', 'voidzones'], summon: 'zealot', split: ['archon', 3] },
   },
   {
     id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 18,
@@ -141,11 +144,11 @@ export const ZONES: ZoneDef[] = [
     elite: 'siegetank', guardian: 'siegetank',
     bosses: [
       { id: 'k1', name: 'Tychus Fireteam', title: 'Hired Guns', shape: 'firebat', color: 0xff7030, hp: 5200, speed: 100, damage: 30, radius: 40, abilities: ['barrage', 'charge'] },
-      { id: 'k2', name: 'Odin Prototype', title: 'Thor-class Walker', shape: 'tank', color: 0x9aa0a8, hp: 9000, speed: 70, damage: 36, radius: 54, abilities: ['barrage', 'slam'] },
+      { id: 'k2', name: 'Odin Prototype', title: 'Thor-class Walker', shape: 'tank', color: 0x9aa0a8, hp: 9000, speed: 70, damage: 36, radius: 54, abilities: ['barrage', 'slam', 'pods'] },
       { id: 'k3', name: 'Spectre Nova', title: 'Shadow Operative', shape: 'marine', color: 0x50e0ff, hp: 12000, speed: 140, damage: 34, radius: 36, abilities: ['charge', 'burst', 'summon'], summon: 'marine' },
       { id: 'k4', name: 'Hyperion Echo', title: 'Battlecruiser', shape: 'tank', color: 0x6080a0, hp: 17000, speed: 75, damage: 42, radius: 62, abilities: ['barrage', 'burst', 'slam'] },
     ],
-    final: { id: 'kf', name: 'Emperor Mengsk', title: 'Dominion Warlord', shape: 'marine', color: 0xc02020, hp: 46000, speed: 95, damage: 48, radius: 56, abilities: ['barrage', 'summon', 'charge', 'burst', 'slam'], summon: 'firebat' },
+    final: { id: 'kf', name: 'Emperor Mengsk', title: 'Dominion Warlord', shape: 'marine', color: 0xc02020, hp: 46000, speed: 95, damage: 48, radius: 56, abilities: ['barrage', 'pods', 'charge', 'cross', 'slam'], summon: 'marine' },
   },
   {
     id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 20,
@@ -161,10 +164,10 @@ export const ZONES: ZoneDef[] = [
     bosses: [
       { id: 'u1', name: 'Void Herald', title: 'Moebius Spawn', shape: 'hybrid', color: 0x60ffe0, hp: 8000, speed: 110, damage: 38, radius: 44, abilities: ['burst', 'charge'] },
       { id: 'u2', name: 'Dominator Prime', title: 'Hybrid Psion', shape: 'archon', color: 0x40c0ff, hp: 13000, speed: 85, damage: 42, radius: 50, abilities: ['barrage', 'summon', 'slam'], summon: 'hybridling' },
-      { id: 'u3', name: 'Narud', title: 'The Faceless', shape: 'zealot', color: 0xa060ff, hp: 18000, speed: 120, damage: 44, radius: 44, abilities: ['charge', 'burst', 'barrage'] },
+      { id: 'u3', name: 'Narud', title: 'The Faceless', shape: 'zealot', color: 0xa060ff, hp: 18000, speed: 120, damage: 44, radius: 44, abilities: ['charge', 'burst', 'voidzones'] },
       { id: 'u4', name: 'Void Colossus', title: 'Herald of Ruin', shape: 'hybrid', color: 0x7a30ff, hp: 26000, speed: 80, damage: 50, radius: 66, abilities: ['slam', 'barrage', 'summon'], summon: 'hybrid' },
     ],
-    final: { id: 'uf', name: 'Amon\'s Avatar', title: 'The Dark God', shape: 'hybrid', color: 0xff3060, hp: 70000, speed: 90, damage: 56, radius: 74, abilities: ['burst', 'barrage', 'charge', 'summon', 'slam'], summon: 'hybridling' },
+    final: { id: 'uf', name: 'Amon\'s Avatar', title: 'The Dark God', shape: 'hybrid', color: 0xff3060, hp: 70000, speed: 90, damage: 56, radius: 74, abilities: ['burst', 'cross', 'voidzones', 'pods', 'slam'], summon: 'hybridling', split: ['hybrid', 2] },
   },
 ];
 
