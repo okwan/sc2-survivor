@@ -111,7 +111,8 @@ export const ZONES: ZoneDef[] = [
     id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 2.4, minutes: 18,
     ground: [0x2e4a2c, 0x243e22], doodad: 0x4fd2ff,
     waves: [
-      { from: 0, pool: [['zealot', 8]] },
+      // the Swarm is on Aiur too: lighter zerglings open the zone before the zealots take over
+      { from: 0, pool: [['zergling', 6], ['zealot', 3]] },
       { from: 1.5, pool: [['zealot', 6], ['stalker', 3]] },
       { from: 4.5, pool: [['zealot', 6], ['stalker', 3], ['hybridling', 3]] },
       { from: 9, pool: [['zealot', 5], ['stalker', 4], ['hybridling', 4]] },
@@ -130,7 +131,7 @@ export const ZONES: ZoneDef[] = [
     id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 3.4, minutes: 18,
     ground: [0x3a3e44, 0x30343a], doodad: 0xd04040,
     waves: [
-      { from: 0, pool: [['marine', 8]] },
+      { from: 0, pool: [['marine', 6], ['zergling', 4]] },
       { from: 1.5, pool: [['marine', 6], ['firebat', 3]] },
       { from: 4.5, pool: [['marine', 6], ['firebat', 4], ['zergling', 3]] },
       { from: 9, pool: [['marine', 6], ['firebat', 4], ['zealot', 3], ['siegetank', 1]] },
@@ -149,7 +150,7 @@ export const ZONES: ZoneDef[] = [
     id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 4.6, minutes: 20,
     ground: [0x1e1c2e, 0x181626], doodad: 0x9a4aff,
     waves: [
-      { from: 0, pool: [['hybridling', 8], ['zergling', 4]] },
+      { from: 0, pool: [['hybridling', 4], ['zergling', 8]] },
       { from: 2, pool: [['hybridling', 6], ['zealot', 3], ['mutalisk', 3]] },
       { from: 5, pool: [['hybridling', 6], ['stalker', 3], ['baneling', 3], ['roach', 3]] },
       { from: 10, pool: [['hybridling', 6], ['stalker', 4], ['firebat', 3], ['hybrid', 1]] },

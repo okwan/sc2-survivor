@@ -103,7 +103,7 @@ export class Hud {
     const need = g.xpNeeded;
     const xpk = Math.min(1, p.xp / need);
     this.set('xp', Math.round(xpk * 400), () => (this.xpFill.style.transform = `scaleX(${xpk})`));
-    this.set('lvl', p.level, () => (this.lvl.textContent = `LV ${p.level}`));
+    this.set('lvl', p.level, () => (this.lvl.textContent = `Level ${p.level}`));
     const sec = Math.floor(g.time);
     this.set('time', sec + (g.endless ? 100000 : 0), () => {
       const sub = g.endless ? 'ENDLESS' : `${g.zone.name.toUpperCase()} · BOSS ${fmtTime(g.zone.minutes * 60)}`;

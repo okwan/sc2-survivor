@@ -1,5 +1,5 @@
 import type { GearItem, GearSlot } from '../data/items';
-import { PERKS } from '../data/items';
+import { PERKS, gearScore } from '../data/items';
 import { TALENTS, TALENT_CAP, talentXpForPoint, type TalentNode } from '../data/talents';
 import { RACES, addMods, addSpellMod, type RaceId, type SpellMod, type StatMods } from '../data/types';
 
@@ -193,15 +193,30 @@ export function equip(race: RaceId, item: GearItem) {
   r.stash = r.stash.filter((s) => s.uid !== item.uid);
   if (prev) r.stash.unshift(prev);
   r.gear[item.slot] = item;
-  if (r.stash.length > 24) r.stash.length = 24;
+  const scrapped = trimStash(r.stash);
   persist();
+  return scrapped;
+}
+
+export const STASH_MAX = 40;
+
+/** Keeps the stash at its limit by scrapping the weakest items; returns what was scrapped. */
+function trimStash(stash: GearItem[]): GearItem[] {
+  const out: GearItem[] = [];
+  while (stash.length > STASH_MAX) {
+    let w = 0;
+    for (let i = 1; i < stash.length; i++) if (gearScore(stash[i]) < gearScore(stash[w])) w = i;
+    out.push(...stash.splice(w, 1));
+  }
+  return out;
 }
 
 export function stashItem(race: RaceId, item: GearItem) {
   const r = save.races[race];
   r.stash.unshift(item);
-  if (r.stash.length > 24) r.stash.length = 24;
+  const scrapped = trimStash(r.stash);
   persist();
+  return scrapped;
 }
 
 export function bestRaceXp(): number {

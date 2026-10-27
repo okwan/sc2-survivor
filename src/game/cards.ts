@@ -7,11 +7,16 @@ import type { Game } from './game';
 export type Card =
   | { kind: 'spell'; id: string; def: SpellDef; rarity: Rarity; key: string }
   | { kind: 'upgrade'; id: string; def: SpellDef; rarity: Rarity; key: string }
+  | { kind: 'mastery'; id: string; def: SpellDef; rarity: Rarity; key: string }
   | { kind: 'passive'; id: string; def: PassiveDef; rarity: Rarity; key: string }
   | { kind: 'fallback'; id: 'minerals' | 'heal'; rarity: Rarity; key: string };
 
 /** Extra damage on a spell from the card's rarity. */
 export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.5];
+
+/** Late game: a maxed spell can take this many mastery cards. */
+export const MAX_MASTERY = 5;
+const MASTERY_DAMAGE = 0.15;
 
 export function rollRarity(luck: number): Rarity {
   const w = [62, 24, 10, 3.4, 0.9];
@@ -35,6 +40,7 @@ export function dealCards(g: Game, n: number): Card[] {
     const s = owned.get(def.id);
     if (s) {
       if (s.rank < MAX_RANK) pool.push({ key, w: 1.5, make: (r) => ({ kind: 'upgrade', id: def.id, def, rarity: r, key }) });
+      else if ((s.mastery ?? 0) < MAX_MASTERY) pool.push({ key, w: 1.0, make: (r) => ({ kind: 'mastery', id: def.id, def, rarity: r, key }) });
     } else if (g.spells.length < MAX_SPELLS) {
       pool.push({ key, w: g.spells.length < 3 ? 1.6 : 1.0, make: (r) => ({ kind: 'spell', id: def.id, def, rarity: r, key }) });
     }
@@ -98,10 +104,21 @@ export function describeCard(g: Game, c: Card): CardView {
       if (c.rarity > 0) lines.push(`+${Math.round(RARITY_SPELL_BONUS[c.rarity] * 100)}% spell damage`);
       return { title: c.def.name, icon: spellIcon(c.def.id, c.def.icon), type: `Rank ${s.rank} → ${to}`, lines, desc: c.def.desc };
     }
+    case 'mastery': {
+      const s = g.spells.find((x) => x.def.id === c.id)!;
+      const b = MASTERY_DAMAGE + RARITY_SPELL_BONUS[c.rarity];
+      return {
+        title: c.def.name,
+        icon: spellIcon(c.def.id, c.def.icon),
+        type: `Mastery ${(s.mastery ?? 0) + 1} of ${MAX_MASTERY}`,
+        lines: [`+${Math.round(b * 100)}% damage`, '+5% area', '+4% cooldown speed'],
+        desc: 'This spell is at max rank. Masteries keep making it stronger.',
+      };
+    }
     case 'passive': {
       const v = c.def.noScale ? c.def.value : c.def.value * RARITY_MULT[c.rarity];
       const picks = g.passivePicks[c.def.id] ?? 0;
-      return { title: c.def.name, icon: c.def.icon, type: `Passive ${picks}/${c.def.maxPicks}`, lines: [fmtStat(c.def.stat, v)], desc: '' };
+      return { title: c.def.name, icon: c.def.icon, type: `Passive · picked ${picks} of ${c.def.maxPicks}`, lines: [fmtStat(c.def.stat, v)], desc: '' };
     }
     case 'fallback':
       return c.id === 'heal'
@@ -119,6 +136,13 @@ export function applyCard(g: Game, c: Card) {
       const s = g.spells.find((x) => x.def.id === c.id)!;
       s.rank = Math.min(MAX_RANK, s.rank + (c.rarity >= 4 ? 2 : 1));
       s.bonus += RARITY_SPELL_BONUS[c.rarity];
+      g.recomputeStats();
+      break;
+    }
+    case 'mastery': {
+      const s = g.spells.find((x) => x.def.id === c.id)!;
+      s.mastery = (s.mastery ?? 0) + 1;
+      s.bonus += MASTERY_DAMAGE + RARITY_SPELL_BONUS[c.rarity];
       g.recomputeStats();
       break;
     }

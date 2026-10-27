@@ -78,6 +78,8 @@ export interface EnemyShot {
   life: number;
   radius: number;
   sprite: Sprite;
+  /** Who fired it, for "killed by" on the results screen. */
+  by: string;
 }
 
 export interface Gem {
@@ -110,6 +112,8 @@ export interface Lair {
   sprite: Sprite;
   guardian: Enemy | null;
   cleared: boolean;
+  /** The guardian was brought up to the run's current strength (first wake only). */
+  scaled?: boolean;
 }
 
 export interface Cache {
@@ -118,6 +122,8 @@ export interface Cache {
   sprite: Sprite;
   opened: boolean;
   label: Sprite | null;
+  /** Game time when an opened cache restocks. */
+  restockAt?: number;
 }
 
 export interface Fx {
@@ -221,5 +227,7 @@ export interface SpellInstance {
   orbiters: Sprite[];
   auraSprite: Sprite | null;
   dmgDone: number;
+  /** Mastery cards taken after max rank. */
+  mastery?: number;
   nextSpawn: number;
 }

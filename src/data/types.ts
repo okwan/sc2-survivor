@@ -106,7 +106,7 @@ export const STAT_LABELS: Record<StatKey, [string, 'flat' | 'pct' | 'mult']> = {
   damage: ['Damage', 'pct'],
   haste: ['Cooldown Speed', 'pct'],
   area: ['Area', 'pct'],
-  duration: ['Duration', 'pct'],
+  duration: ['Spell effect duration', 'pct'],
   projSpeed: ['Projectile Speed', 'pct'],
   critChance: ['Crit Chance', 'pct'],
   critMult: ['Crit Damage', 'pct'],

@@ -1,5 +1,5 @@
 import { Application, BitmapFont, BitmapText, Container, Graphics, Sprite, TilingSprite, type Texture } from 'pixi.js';
-import { ENEMIES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
+import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
 import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
@@ -35,6 +35,7 @@ export interface RunResult {
   race: RaceId;
   endless: boolean;
   damage: { name: string; icon: string; dmg: number }[];
+  killedBy: string;
 }
 
 export interface GameHooks {
@@ -166,6 +167,11 @@ export class Game {
   private endlessIdx = 0;
   /** Delayed actions on game time, so they wait while the game is paused. */
   private timers: { at: number; fn: () => void }[] = [];
+  /** Damage from talents that aren't spells (burn, nuke, feedback, dash), for the results screen. */
+  private extraDmg: Record<number, number> = {};
+  /** The last enemy that hurt the player. */
+  lastHitBy = '';
+  private edgeWarnAt = 0;
   probe: Minion | null = null;
   private frameMs = 16;
 
@@ -200,7 +206,23 @@ export class Game {
     this.recomputeStats();
     this.player.hp = this.stats.maxHp;
     this.player.shield = this.stats.maxShield;
-    this.learnSpell(tb.startSpell ?? this.race.startSpell, 0);
+    const z = this.zone;
+    // build every enemy texture this zone uses now, so the first appearance of a unit doesn't hitch
+    const ids = new Set([...z.waves.flatMap((w) => w.pool.map(([id]) => id)), z.elite, z.guardian]);
+    for (const id of ids) {
+      const d = ENEMIES[id];
+      if (d) enemyTexture(d.shape, d.color, d.radius);
+    }
+    for (const b of [...z.bosses, z.final]) enemyTexture(b.shape, b.color, b.radius);
+    // later zones start you with a few free level-ups so the first minute isn't a stat check
+    const zi = ZONES.findIndex((x) => x.id === z.id);
+    if (zi > 0) {
+      this.player.level += zi * 2;
+      this.pendingLevels += zi * 2;
+    }
+    // a capstone's spell comes on top of the race's own starter, never instead of it
+    this.learnSpell(this.race.startSpell, 0);
+    if (tb.startSpell && tb.startSpell !== this.race.startSpell) this.learnSpell(tb.startSpell, 0);
     this.zoom = save.settings.zoom * (Math.min(window.innerWidth, window.innerHeight) < 600 ? 0.75 : 1);
   }
 
@@ -371,12 +393,13 @@ export class Game {
     const m = this.spellMods[sp.def.id] ?? {};
     const s = this.stats;
     const k = sp.def.kind;
+    const mast = sp.mastery ?? 0;
     const usesCount = k === 'bolt' || k === 'lob' || k === 'summon' || k === 'orbit' || k === 'mine' || k === 'beam' || k === 'field' || k === 'chain';
     sp.stats = {
       damage: b.damage * (1 + (m.damage ?? 0) + sp.bonus) * (k === 'barrier' ? 1 : s.damage),
-      cooldown: (b.cooldown * Math.max(0.3, 1 - (m.cooldown ?? 0))) / (1 + s.haste),
+      cooldown: (b.cooldown * Math.max(0.3, 1 - (m.cooldown ?? 0))) / (1 + s.haste + mast * 0.04),
       count: Math.floor(b.count + (m.count ?? 0) + (usesCount && k !== 'chain' ? s.extraProj : 0) + 1e-6),
-      area: b.area * (1 + (m.area ?? 0)) * (k === 'bolt' || k === 'summon' ? 1 : s.area),
+      area: b.area * (1 + (m.area ?? 0) + mast * 0.05) * (k === 'bolt' || k === 'summon' ? 1 : s.area),
       pierce: Math.floor(b.pierce + (m.pierce ?? 0) + 1e-6),
       duration: b.duration * (1 + (m.duration ?? 0)) * (k === 'bolt' ? 1 : s.duration),
       speed: k === 'bolt' || k === 'summon' ? b.speed * s.projSpeed : b.speed,
@@ -402,14 +425,14 @@ export class Game {
 
   get xpNeeded(): number {
     const l = this.player.level - 1;
-    return Math.round(4 + l * 2.3 + Math.pow(l, 1.8) * 0.25);
+    return Math.round(6 + l * 2.6 + Math.pow(l, 1.75) * 0.24);
   }
 
   // ------------------------------------------------------------ enemies
   /** Enemy health and damage multipliers at minute m. */
   private enemyScale(m: number) {
-    // harder zones ramp up to their full tier over the first ~60% of the run instead of starting there
-    const ramp = Math.min(1, 0.35 + (0.65 * m) / (this.zone.minutes * 0.6));
+    // harder zones ramp up to their full tier over the first ~70% of the run instead of starting there
+    const ramp = Math.min(1, 0.2 + (0.8 * m) / (this.zone.minutes * 0.7));
     const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
     return { hp: tier * (1 + m * 0.16 + m * m * 0.012), dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) };
   }
@@ -449,7 +472,8 @@ export class Game {
     e.hitStamp.fill(-99);
     if (opts.boss) {
       const b = opts.boss;
-      const bossHp = b.hp * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1);
+      // final bosses were long, low-threat fights; they have less health and attack more often instead
+      const bossHp = b.hp * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1);
       e.maxHp = bossHp;
       e.speed = b.speed;
       e.damage = b.damage * Math.pow(this.zone.tier, 0.6);
@@ -512,6 +536,20 @@ export class Game {
       }
     }
     return best;
+  }
+
+  /** Puts a boss in range at the front of a target list, so single-target spells don't get screened by its adds. */
+  preferBoss(targets: Enemy[], range: number): Enemy[] {
+    const p = this.player;
+    for (const b of this.bosses) {
+      if (b.hp <= 0 || (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > range * range) continue;
+      const i = targets.indexOf(b);
+      if (i > 0) targets.splice(i, 1);
+      if (i !== 0) targets.unshift(b);
+      if (targets.length > 1 && i < 0) targets.pop();
+      break;
+    }
+    return targets;
   }
 
   nearestEnemies(x: number, y: number, n: number, maxDist: number): Enemy[] {
@@ -593,7 +631,8 @@ export class Game {
     this.scratchDepth++;
     for (let k = 0; k < n; k++) {
       const e = this.enemies[this.qbuf[k]];
-      if (!e || e.hp <= 0 || e.asleep) continue;
+      // sleeping guardians can be hit too; the hit wakes them
+      if (!e || e.hp <= 0) continue;
       const dx = e.x - x;
       const dy = e.y - y;
       const rr = r + e.radius;
@@ -615,8 +654,10 @@ export class Game {
     }
     e.hp -= dmg;
     e.flash = 0.08;
-    const sp = slot < 6 ? this.spellBySlot(slot) : undefined;
-    if (sp) sp.dmgDone += dmg;
+    if (slot >= 0 && slot < 6) {
+      const sp = this.spellBySlot(slot);
+      if (sp) sp.dmgDone += dmg;
+    } else if (slot >= 6) this.extraDmg[slot] = (this.extraDmg[slot] ?? 0) + dmg;
     if (opts.kx || opts.ky) {
       const inv = 1 / e.mass;
       e.kx += (opts.kx ?? 0) * inv;
@@ -695,7 +736,8 @@ export class Game {
 
   private wake(e: Enemy) {
     e.asleep = false;
-    if (e.lair && !e.boss) {
+    if (e.lair && !e.boss && !e.lair.scaled) {
+      e.lair.scaled = true;
       // guardians were placed at the start of the run: bring them up to the current strength
       const a = this.enemyScale(0);
       const b = this.enemyScale(this.time / 60);
@@ -710,13 +752,14 @@ export class Game {
   private banelingBlast(e: Enemy) {
     const p = this.player;
     this.addFx(fx.soft(), e.x, e.y, 0x9cff3c, 0.4, 1.6, 0.35, 0.9);
-    if (Math.hypot(p.x - e.x, p.y - e.y) < 60) this.damagePlayer(e.damage);
+    if (Math.hypot(p.x - e.x, p.y - e.y) < 60) this.damagePlayer(e.damage, e.def.name);
   }
 
   // ------------------------------------------------------------ player
-  damagePlayer(amount: number) {
+  damagePlayer(amount: number, by = '') {
     const p = this.player;
     if (p.invuln > 0 || p.dashT > 0 || this.over) return;
+    if (by) this.lastHitBy = by;
     if (Math.random() < this.stats.dodge) {
       this.floatText(p.x, p.y - 30, 'MISS', 0xaaaaaa);
       return;
@@ -788,7 +831,16 @@ export class Game {
       zone: this.zone,
       race: this.race.id,
       endless: this.endless,
-      damage: this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })).sort((a, b) => b.dmg - a.dmg),
+      killedBy: won ? '' : this.lastHitBy,
+      damage: [
+        ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
+        ...[
+          [6, 'Napalm burn', '🔥'],
+          [SLOT_NUKE, 'Tactical Nuke', '☢️'],
+          [SLOT_FEEDBACK, 'Feedback', '💫'],
+          [SLOT_DASH, this.race.dashName, '💨'],
+        ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
+      ].sort((a, b) => b.dmg - a.dmg),
     });
   }
 
@@ -1056,14 +1108,14 @@ export class Game {
     e.y += (dy / d) * e.speed * rage * dt;
     b.abilityTimer -= dt;
     if (b.abilityTimer > 0) return;
-    b.abilityTimer = (b.enraged ? 2.0 : 3.4) + Math.random();
+    b.abilityTimer = (b.enraged ? 1.7 : 2.8) + Math.random();
     const ab = b.def.abilities[Math.floor(Math.random() * b.def.abilities.length)];
     const bulletDmg = e.damage * 0.6;
     switch (ab) {
       case 'burst': {
         const n = b.enraged ? 28 : 18;
         const off = Math.random();
-        for (let i = 0; i < n; i++) this.enemyShot(e.x, e.y, ((i + off) / n) * Math.PI * 2, 230, bulletDmg, 8);
+        for (let i = 0; i < n; i++) this.enemyShot(e.x, e.y, ((i + off) / n) * Math.PI * 2, 230, bulletDmg, 8, b.def.name);
         break;
       }
       case 'barrage': {
@@ -1075,7 +1127,7 @@ export class Game {
             fn: () => {
               if (e.hp <= 0 || !e.boss) return;
               const a0 = Math.atan2(this.player.y - e.y, this.player.x - e.x);
-              for (let i = -2; i <= 2; i++) this.enemyShot(e.x, e.y, a0 + i * 0.16, 330, bulletDmg, 7);
+              for (let i = -2; i <= 2; i++) this.enemyShot(e.x, e.y, a0 + i * 0.16, 330, bulletDmg, 7, e.boss.def.name);
             },
           });
         }
@@ -1094,12 +1146,12 @@ export class Game {
         const ty = p.y;
         const r = b.enraged ? 170 : 130;
         this.telegraphs.push({
-          kind: 'circle', x: tx, y: ty, r, dx: 0, dy: 0, len: 0, t: 0, max: 1.0, damage: e.damage * 1.2, friendly: false,
+          kind: 'circle', x: tx, y: ty, r, dx: 0, dy: 0, len: 0, t: 0, max: 0.8, damage: e.damage * 1.2, friendly: false,
           onDone: () => {
             this.addFx(fx.soft(), tx, ty, 0xff6030, 0.5, (r * 2.2) / 128, 0.4, 0.9);
             this.shake(8);
             sfx('explode');
-            if (Math.hypot(this.player.x - tx, this.player.y - ty) < r) this.damagePlayer(e.damage * 1.2);
+            if (Math.hypot(this.player.x - tx, this.player.y - ty) < r) this.damagePlayer(e.damage * 1.2, b.def.name);
           },
         });
         break;
@@ -1107,21 +1159,23 @@ export class Game {
       case 'summon': {
         const def = ENEMIES[b.def.summon ?? 'zergling'];
         const n = b.enraged ? 12 : 8;
+        // half around the boss, half in a ring around the player so the summon actually threatens
         for (let i = 0; i < n; i++) {
           const a = (i / n) * Math.PI * 2;
-          this.spawnEnemy(def, e.x + Math.cos(a) * (e.radius + 40), e.y + Math.sin(a) * (e.radius + 40));
+          if (i % 2) this.spawnEnemy(def, p.x + Math.cos(a) * 340, p.y + Math.sin(a) * 340);
+          else this.spawnEnemy(def, e.x + Math.cos(a) * (e.radius + 40), e.y + Math.sin(a) * (e.radius + 40));
         }
         break;
       }
     }
   }
 
-  private enemyShot(x: number, y: number, a: number, speed: number, damage: number, radius: number) {
+  private enemyShot(x: number, y: number, a: number, speed: number, damage: number, radius: number, by: string) {
     const spr = this.sprite(this.layers.fx, fx.spark());
     spr.tint = 0xff4060;
     spr.scale.set(radius / 8);
     spr.position.set(x, y);
-    this.shots.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage, life: 5, radius, sprite: spr });
+    this.shots.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage, life: 5, radius, sprite: spr, by });
   }
 
   // ------------------------------------------------------------ main update
@@ -1172,6 +1226,10 @@ export class Game {
     }
     p.x = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.x));
     p.y = Math.max(-WORLD + 20, Math.min(WORLD - 20, p.y));
+    if (Math.max(Math.abs(p.x), Math.abs(p.y)) > WORLD - 300 && this.time >= this.edgeWarnAt) {
+      this.edgeWarnAt = this.time + 10;
+      this.hooks.toast('Edge of the zone: you can get pinned here. Head back toward the middle.', '#ff9a6a');
+    }
     p.dashCd = Math.max(0, p.dashCd - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     p.feedbackCd -= dt;
@@ -1303,14 +1361,16 @@ export class Game {
       }
     }
     // regular spawns
-    const alive = this.enemyCount;
-    const rate = (1.6 + m * 0.8 + m * m * 0.03) * (this.endless ? 1.5 : 1);
-    this.spawnAcc += rate * dt;
-    const wave = [...z.waves].reverse().find((w) => m >= w.from) ?? z.waves[0];
+    // a little more pressure in the first minutes so the start isn't empty
+    const rate = (2.4 + m * 0.75 + m * m * 0.03) * (this.endless ? 1.5 : 1);
+    // cap the backlog so a full map can't release hundreds of enemies in one frame
+    this.spawnAcc = Math.min(this.spawnAcc + rate * dt, 12);
+    let wave = z.waves[0];
+    for (const w of z.waves) if (m >= w.from) wave = w;
     const total = wave.pool.reduce((a, [, w]) => a + w, 0);
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
-      if (alive >= MAX_ALIVE) break;
+      if (this.enemyCount >= MAX_ALIVE) break;
       let r = Math.random() * total;
       let id = wave.pool[0][0];
       for (const [eid, w] of wave.pool) {
@@ -1452,7 +1512,7 @@ export class Game {
           if (e.shotTimer <= 0 && d < range * 1.3) {
             e.shotTimer = def.shotCd ?? 2.5;
             const a = Math.atan2(dy, dx);
-            this.enemyShot(e.x, e.y, a, def.shotSpeed ?? 280, e.damage, def.id === 'siegetank' ? 11 : 6);
+            this.enemyShot(e.x, e.y, a, def.shotSpeed ?? 280, e.damage, def.id === 'siegetank' ? 11 : 6, def.name);
           }
         } else if (def.behavior === 'charger') {
           if (e.windup > 0) {
@@ -1470,18 +1530,20 @@ export class Game {
             e.shotTimer -= dt;
             if (e.shotTimer <= 0 && d < 340) {
               e.shotTimer = 4;
-              e.windup = 0.55;
+              e.windup = 0.8;
               e.cdx = dx / d;
               e.cdy = dy / d;
-              this.telegraphs.push({ kind: 'line', x: e.x, y: e.y, r: e.radius * 0.8, dx: e.cdx, dy: e.cdy, len: spd * 2.4 * 0.6 + e.radius, t: 0, max: 0.55, damage: 0, onDone: null, friendly: false });
+              this.telegraphs.push({ kind: 'line', x: e.x, y: e.y, r: e.radius * 0.8, dx: e.cdx, dy: e.cdy, len: spd * 2.4 * 0.6 + e.radius, t: 0, max: 0.8, damage: 0, onDone: null, friendly: false });
             }
           }
         } else {
           e.x += (dx / d) * spd * dt;
           e.y += (dy / d) * spd * dt;
           if (def.behavior === 'exploder' && d < e.radius + 26) {
-            e.hp = 0;
-            this.killEnemy(e, -1);
+            // blowing up on you isn't a kill: no XP, no kill count
+            this.banelingBlast(e);
+            this.bwDeath(e, false);
+            this.removeEnemyAt(i);
             i--;
             continue;
           }
@@ -1494,8 +1556,9 @@ export class Game {
       // contact damage
       const cr = e.radius + 14;
       if (d < cr && e.contactCd <= 0) {
-        e.contactCd = 0.6;
-        this.damagePlayer(e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage);
+        // a charger's charge hits once, not on every contact tick
+        e.contactCd = e.def.behavior === 'charger' ? 1.2 : 0.6;
+        this.damagePlayer(e.def.behavior === 'charger' ? e.damage * 0.75 : e.damage, e.boss ? e.boss.def.name : e.lair ? `${e.def.name} Guardian` : e.def.name);
       }
       this.grid.insert(i, e.x, e.y);
     }
@@ -1587,7 +1650,7 @@ export class Game {
       const rr = s.radius + 12;
       let dead = s.life <= 0;
       if (!dead && dx * dx + dy * dy < rr * rr) {
-        this.damagePlayer(s.damage);
+        this.damagePlayer(s.damage, s.by);
         dead = true;
       }
       if (dead) {
@@ -1768,12 +1831,18 @@ export class Game {
     // supply caches
     this.cacheMsgT -= dt;
     for (const c of this.caches) {
+      if (c.opened && c.restockAt !== undefined && this.time >= c.restockAt) {
+        // caches restock, so minerals stay worth collecting late in the run
+        c.opened = false;
+        c.sprite.alpha = 1;
+      }
       if (c.opened) continue;
       if (Math.abs(c.x - p.x) > 40 || Math.abs(c.y - p.y) > 40) continue;
       if (p.minerals >= this.cacheCost) {
         p.minerals -= this.cacheCost;
         this.cacheCost = Math.round(this.cacheCost * 1.5 + 10);
         c.opened = true;
+        c.restockAt = this.time + 240;
         c.sprite.alpha = 0.35;
         const rar = rollRarity(this.stats.luck + 0.2);
         sfx('select');
@@ -1956,6 +2025,11 @@ export class Game {
     for (const l of this.lairs) if (!l.cleared && near(l.x, l.y, 1800)) out.push({ x: l.x, y: l.y, kind: 'lair' });
     for (const c of this.caches) if (!c.opened && near(c.x, c.y, 1400)) out.push({ x: c.x, y: c.y, kind: 'cache' });
     return out;
+  }
+
+  /** Shows a HUD toast (for UI code outside the game). */
+  toastMsg(msg: string, color?: string) {
+    this.hooks.toast(msg, color);
   }
 
   /** World position to screen pixels. */

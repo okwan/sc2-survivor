@@ -22,7 +22,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
   switch (def.kind) {
     case 'bolt': {
       const range = st.speed * st.duration;
-      const targets = g.nearestEnemies(p.x, p.y, st.count, range);
+      const targets = g.preferBoss(g.nearestEnemies(p.x, p.y, st.count, range), range);
       if (!targets.length) return false;
       for (let i = 0; i < st.count; i++) {
         const t = targets[i % targets.length];
@@ -119,7 +119,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
     }
     case 'beam': {
       const len = 900;
-      const targets = g.nearestEnemies(p.x, p.y, st.count, len * 0.8);
+      const targets = g.preferBoss(g.nearestEnemies(p.x, p.y, st.count, len * 0.8), len * 0.8);
       if (!targets.length) return false;
       for (let i = 0; i < st.count; i++) {
         const t = targets[i % targets.length];

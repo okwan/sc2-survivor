@@ -30,7 +30,8 @@ export function grantRewards(r: RunResult): Rewards {
   const pointsBefore = pointsEarned(r.race);
   rs.talentXp += total;
   rs.runs++;
-  const vespene = r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 4);
+  // at least 1 vespene for any run past a minute, so the rewards loop starts on the first try
+  const vespene = Math.max(mins >= 1 ? 1 : 0, r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 3));
   save.vespene += vespene;
   let unlocked: string | null = null;
   const zi = ZONES.findIndex((z) => z.id === r.zone.id);

@@ -77,7 +77,7 @@ export const SPELLS: SpellDef[] = [
   {
     id: 'mines', race: 'terran', name: 'Spider Mines', icon: '🕷️', color: 0xcfd8dc, kind: 'mine', tags: ['explosive', 'tech'],
     desc: 'Drops spider mines that burrow and detonate on contact.',
-    base: S(40, 3, 2, 70, 0, 12, 0),
+    base: S(32, 3, 2, 70, 0, 12, 0),
     ranks: [{ count: 1 }, { damage: 15 }, { area: 15 }, { count: 1 }, { damage: 20, cooldown: -0.4 }, { count: 2 }, { damage: 30, area: 20 }],
   },
   {
@@ -132,7 +132,7 @@ export const SPELLS: SpellDef[] = [
   {
     id: 'acidpool', race: 'zerg', name: 'Creep Bloom', icon: '🟣', color: 0xa040ff, kind: 'field', tags: ['acid'],
     desc: 'Creep erupts beneath enemy packs, dissolving everything standing on it.',
-    base: S(7, 4, 1, 75, 0, 4, 0),
+    base: S(6, 4, 1, 75, 0, 4, 0),
     ranks: [{ area: 15 }, { damage: 3 }, { count: 1 }, { duration: 1 }, { damage: 4, area: 10 }, { count: 1 }, { damage: 5, cooldown: -0.6 }],
   },
   {
@@ -145,7 +145,7 @@ export const SPELLS: SpellDef[] = [
   {
     id: 'blades', race: 'protoss', name: 'Psi Blades', icon: '⚔️', color: 0x7ae0ff, kind: 'cone', tags: ['psionic'],
     desc: 'Sweeping psionic blades cleave enemies in a wide arc.',
-    base: S(18, 0.75, 1, 145, 0, 0.2, 0),
+    base: S(18, 0.75, 1, 165, 0, 0.2, 0),
     ranks: [{ damage: 5 }, { area: 20 }, { cooldown: -0.1 }, { damage: 6 }, { area: 20 }, { damage: 7, cooldown: -0.1 }, { area: 25, damage: 8 }],
   },
   {
@@ -157,7 +157,7 @@ export const SPELLS: SpellDef[] = [
   {
     id: 'storm', race: 'protoss', name: 'Psionic Storm', icon: '🌩️', color: 0x9a7cff, kind: 'field', tags: ['psionic'],
     desc: 'Calls down a storm of psionic energy on enemy packs.',
-    base: S(10, 3.5, 1, 85, 0, 3, 0),
+    base: S(8.5, 3.5, 1, 85, 0, 3, 0),
     ranks: [{ damage: 4 }, { area: 15 }, { count: 1 }, { damage: 5 }, { duration: 1, area: 10 }, { count: 1 }, { damage: 8, cooldown: -0.5 }],
   },
   {
