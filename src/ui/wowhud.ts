@@ -107,19 +107,19 @@ export class WowHud {
       bg(s, wowCrop('interface/mainmenubar/ui-mainmenubar-dwarf.png', 0, 1, t, b));
       bar.append(s);
     });
-    // experience bar along the top
+    // experience bar along the top; its frame is in the same texture
     const xp = el('div', 'xpbar');
     xp.append(this.xpFill);
     const xpStrips: [number, number][] = [
-      [0.79296875, 1],
-      [0.54296875, 0.75],
-      [0.29296875, 0.5],
-      [0.04296875, 0.25],
+      [0.79296875, 0.83203125],
+      [0.54296875, 0.58203125],
+      [0.29296875, 0.33203125],
+      [0.04296875, 0.08203125],
     ];
     xpStrips.forEach(([t, b], i) => {
       const s = el('div', 'xpart');
       s.style.left = `${i * 256}px`;
-      bg(s, wowCrop('interface/mainmenubar/ui-xp-bar.png', 0, 1, t, b));
+      bg(s, wowCrop('interface/mainmenubar/ui-mainmenubar-dwarf.png', 0, 1, t, b));
       xp.append(s);
     });
     xp.append(this.xpText);

@@ -141,18 +141,14 @@ async function nineSlice(path: string, tint?: [number, number, number]): Promise
   piece(6, 0, 2 * s);
   piece(7, 2 * s, 2 * s);
   if (tint) {
+    // multiply by the colour, then cut back to the art's own alpha
+    const art = canvas(s * 3, s * 3);
+    art.getContext('2d')!.drawImage(cv, 0, 0);
     ctx.globalCompositeOperation = 'multiply';
     ctx.fillStyle = `rgb(${tint.map((c) => Math.round(c * 255)).join(',')})`;
     ctx.fillRect(0, 0, s * 3, s * 3);
     ctx.globalCompositeOperation = 'destination-in';
-    piece(0, 0, s);
-    piece(1, 2 * s, s);
-    piece(2, s, 0, Math.PI / 2);
-    piece(3, s, 2 * s, Math.PI / 2);
-    piece(4, 0, 0);
-    piece(5, 2 * s, 0);
-    piece(6, 0, 2 * s);
-    piece(7, 2 * s, 2 * s);
+    ctx.drawImage(art, 0, 0);
   }
   return { url: cv.toDataURL(), size: s };
 }
