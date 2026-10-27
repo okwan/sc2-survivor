@@ -12,7 +12,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
 
 /** First-run hints, shown once per browser. */
 const TIPS: { at: number; text: string; touch?: string }[] = [
-  { at: 1, text: 'Move with WASD or the arrow keys. Your spells fire on their own.', touch: 'Drag anywhere to move. Your spells fire on their own.' },
+  { at: 1, text: 'Right-click to move, like in StarCraft (WASD works too). Your spells fire on their own.', touch: 'Drag anywhere to move. Your spells fire on their own.' },
   { at: 8, text: 'Grab the blue crystals enemies drop to level up and pick upgrades.' },
   { at: 20, text: 'Arrows on the edge point to lairs (orange, guarded gear) and supply caches (yellow, cost minerals).' },
 ];

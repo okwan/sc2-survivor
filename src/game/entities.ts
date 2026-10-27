@@ -21,6 +21,8 @@ export interface Enemy {
   def: EnemyDef;
   x: number;
   y: number;
+  /** moved this frame (plays the walk cycle) */
+  moving: boolean;
   kx: number; // knockback velocity
   ky: number;
   hp: number;

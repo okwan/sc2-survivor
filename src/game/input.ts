@@ -6,6 +6,9 @@ export class Input {
   hasMouse = false;
   dashPressed = false;
   wheel = 0;
+  /** StarCraft-style move order: the screen point last right-clicked (held and dragged keeps updating it). */
+  order: [number, number] | null = null;
+  private orderHeld = false;
   // virtual joystick
   private touchId: number | null = null;
   private touchOx = 0;
@@ -31,10 +34,16 @@ export class Input {
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
       this.hasMouse = true;
+      if (this.orderHeld) this.order = [e.clientX, e.clientY];
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) this.dashPressed = true;
+      if (e.button !== 2) return;
+      this.order = [e.clientX, e.clientY];
+      this.orderHeld = true;
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 2) this.orderHeld = false;
     });
     canvas.addEventListener('wheel', (e) => {
       this.wheel += Math.sign(e.deltaY);
@@ -115,6 +124,13 @@ export class Input {
       return [this.touchDx, this.touchDy];
     }
     return [0, 0];
+  }
+
+  /** The newest move order, once. */
+  consumeOrder(): [number, number] | null {
+    const o = this.order;
+    this.order = null;
+    return o;
   }
 
   consumeDash(): boolean {

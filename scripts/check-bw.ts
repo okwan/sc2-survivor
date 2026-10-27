@@ -70,3 +70,14 @@ for (const [zone, set] of Object.entries(pmaps)) {
     console.log('  |' + row + '|');
   }
 }
+
+// Walk cycles from iscript: every frame set must exist in the unit's GRP.
+if (manifest.files.includes('anims.json')) {
+  const anims: Record<string, { walk?: [number, number][] }> = JSON.parse(readFileSync(join(dir, 'anims.json'), 'utf8'));
+  for (const [grp, a] of Object.entries(anims)) {
+    if (!a.walk) continue;
+    const g = parseGrp(readFileSync(join(dir, grp)));
+    const bad = a.walk.filter(([f]) => f + 16 >= g.frames);
+    console.log(`check-bw: walk ${grp} ${a.walk.length} steps, ${a.walk.reduce((n, [, t]) => n + t, 0)} ticks${bad.length ? `, MISSING frames ${bad.map(([f]) => f).join(',')} of ${g.frames}` : ''}`);
+  }
+}
