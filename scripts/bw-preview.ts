@@ -159,14 +159,15 @@ function spriteSheet(name: string, list: string[], frames: number, pal: Uint8Arr
         sh.blit(sm, w, h, cx + (frames > 1 ? fr * cell : 0) + Math.floor((cell - w) / 2), cy + 12);
       }
     } catch (e) {
-      console.log(`preview: ${p} failed: ${(e as Error).message}`);
+      const b = f('unit/' + p);
+      console.log(`preview: ${p} failed: ${(e as Error).message} len ${b.length} head ${b.subarray(0, 48).toString('hex')}`);
     }
   });
   sh.emit(name);
 }
 for (const set of SETS) spriteSheet(`doodads-${set}`, idx.doodads.filter((p) => p.toLowerCase().includes(`\\${set}\\`)).map((p) => p.replace(/\\/g, '/')), 1, wpe(set), 128);
 spriteSheet('neutral', idx.neutral.map((p) => p.replace(/\\/g, '/')), 1, wpe('badlands'), 96);
-spriteSheet('fx', idx.fx.map((p) => p.replace(/\\/g, '/')), 12, wpe('badlands'), 64);
+spriteSheet('fx', idx.fx.map((p) => p.replace(/\\/g, '/')), 8, wpe('badlands'), 40);
 
 // ---- UI
 if (want('ui')) {
