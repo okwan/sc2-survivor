@@ -30,6 +30,7 @@ jobs:
         env:
           NODE_ENV: production
           BW_ZIP_URL: ${{ vars.BW_ZIP_URL }}
+          BW_INVENTORY: ${{ github.ref != 'refs/heads/main' && '1' || '' }}
       - run: node --experimental-strip-types scripts/check-bw.ts dist/bw
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
