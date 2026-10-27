@@ -50,6 +50,8 @@ async function download(url, dest) {
   writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
 }
 
+let lastArchive = '';
+
 async function getSourceDir() {
   if (localSource) {
     if (statSync(localSource).isDirectory()) return localSource;
@@ -63,6 +65,7 @@ async function getSourceDir() {
     try {
       console.log(`fetch-bw: downloading ${url}`);
       await download(url, archive);
+      lastArchive = archive;
       extract(archive, join(dir, 'x'));
       if (Object.keys(findMpqs(join(dir, 'x'))).length) return join(dir, 'x');
       const list = execFileSync(/\.7z$/i.test(url) ? '7z' : 'unzip', /\.7z$/i.test(url) ? ['l', archive] : ['-l', archive]).toString();
@@ -86,6 +89,19 @@ function inventory(archives, order, src) {
   };
   walk(src);
   console.log('inventory: maps ' + maps.length + '\n' + maps.join('\n'));
+  if (lastArchive) {
+    const all = execFileSync('7z', ['l', lastArchive], { maxBuffer: 64 << 20 }).toString().split('\n');
+    const dirs = new Map();
+    for (const l of all) {
+      const m = l.match(/(\d+)\s+(?:\d+\s+)?(\S.*)$/);
+      if (!m || !/[\\/]/.test(m[2])) continue;
+      const path = m[2].trim();
+      const d = path.split(/[\\/]/).slice(0, 3).join('/');
+      dirs.set(d, (dirs.get(d) ?? 0) + 1);
+    }
+    console.log('inventory: archive dirs ' + [...dirs].map(([d, n]) => `${d}(${n})`).join(' | '));
+    console.log('inventory: archive media ' + all.filter((l) => /\.(wav|ogg|mp3|scm|scx|chk)\s*$/i.test(l)).slice(0, 300).map((l) => l.slice(53)).join(' | '));
+  }
   const read = (p) => {
     for (const a of archives) {
       if (!a.hasFile(p)) continue;
@@ -122,7 +138,7 @@ function inventory(archives, order, src) {
     'font\\font8.fnt', 'font\\font10.fnt', 'font\\font14.fnt', 'font\\font16.fnt', 'font\\font16x.fnt', 'font\\font50.fnt',
     'glue\\title\\title.pcx', 'glue\\palmm\\backgnd.pcx', 'glue\\palmm\\tpal.pcx', 'glue\\mainmenu\\single.grp', 'glue\\palmm\\pal.pcx',
     'rez\\stat_txt.tbl', 'arr\\images.dat', 'arr\\sprites.dat', 'game\\tunit.pcx', 'unit\\neutral\\min01.grp', 'unit\\neutral\\geyser.grp',
-    'music\\terran1.wav', 'music\\zerg1.wav', 'music\\protoss1.wav', 'music\\title.wav', 'sound\\terran\\marine\\tmafir00.wav',
+    'music\\terran1.wav', 'music\\zerg1.wav', 'music\\protoss1.wav', 'music\\title.wav', 'sound\\Bullet\\TMaFir00.wav', 'sound\\Misc\\ExploLrg.wav',
   ];
   const camp = [];
   for (const [dir, races] of [['campaign', ['terran', 'zerg', 'protoss']], ['campaign\\expcamp', ['protoss', 'terran', 'zerg']]]) {
