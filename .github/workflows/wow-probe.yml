@@ -13,4 +13,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node scripts/probe-wow.mjs
+      - run: sudo apt-get install -y innoextract
+      - uses: actions/cache@v4
+        with:
+          path: .wow-cache
+          key: wow-${{ hashFiles('scripts/fetch-wow.mjs', 'scripts/blp.mjs') }}
+          restore-keys: wow-
+      - run: node scripts/fetch-wow.mjs dist
+        env:
+          WOW_LIST: '1'
+      - run: du -sh dist/wow; ls dist/wow; ls dist/wow/interface | head -80

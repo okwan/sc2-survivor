@@ -16,7 +16,23 @@ import { dirname, join, relative } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { decodeBlp } from './blp.mjs';
 
-const MIRRORS = [process.env.WOW_ARCHIVE_URL, ...(process.env.WOW_MIRRORS ?? '').split(/\s+/)].filter(Boolean);
+/**
+ * Where the client comes from. An archive URL (zip/7z/rar holding Data/*.MPQ) from WOW_ARCHIVE_URL wins;
+ * otherwise the 1.12.1 enUS installers on archive.org, which are Inno Setup sets (setup.exe + .bin
+ * slices) unpacked with innoextract. archive.org serves single files out of a zip, so only the
+ * installer itself is downloaded.
+ */
+const SOURCES = [
+  process.env.WOW_ARCHIVE_URL && { url: process.env.WOW_ARCHIVE_URL },
+  {
+    inno: 'https://archive.org/download/nostalrius-wow-classic/Nostalrius-WoW-Classic.zip/WoW%20Classic%2F',
+    parts: ['WoW-1.12.1-Setup.exe', 'WoW-1.12.1-Setup-1.bin', 'WoW-1.12.1-Setup-2.bin', 'WoW-1.12.1-Setup-3.bin'],
+  },
+  {
+    inno: 'https://archive.org/download/World_of_Warcraft_Client_and_Installation_Archive/ISO/WoW-1.12.1_install.rar/Wowinstall%20classic%2F',
+    parts: ['setup.exe', 'setup-1.bin', 'setup-2.bin', 'setup-3.bin', 'setup-4.bin'],
+  },
+].filter(Boolean);
 
 const outDir = process.argv[2] ?? 'dist';
 const localSource = process.argv[3];
@@ -66,8 +82,32 @@ async function getSourceDir() {
     extract(localSource, dir);
     return dir;
   }
-  for (const url of MIRRORS) {
+  for (const src of SOURCES) {
     const dir = mkdtempSync(join(tmpdir(), 'wow-'));
+    if (src.inno) {
+      try {
+        const t0 = Date.now();
+        for (const part of src.parts) {
+          console.log(`fetch-wow: downloading ${src.inno}${part}`);
+          execFileSync('curl', ['-fsSL', '--retry', '3', '-o', join(dir, part), src.inno + encodeURIComponent(part)], { stdio: 'inherit' });
+        }
+        console.log(`fetch-wow: installer downloaded in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+        const out = join(dir, 'x');
+        mkdirSync(out);
+        const inc = MPQ_ORDER.flatMap((n) => ['-I', n]);
+        execFileSync('innoextract', ['-s', '--progress=0', '-e', '-d', out, ...inc, join(dir, src.parts[0])], { stdio: 'inherit' });
+        for (const part of src.parts) rmSync(join(dir, part), { force: true });
+        if (Object.keys(findMpqs(out)).length) return out;
+        console.warn('fetch-wow: no WoW MPQs in the installer; it holds:');
+        const list = execFileSync('innoextract', ['-l', join(dir, src.parts[0])], { encoding: 'utf8', maxBuffer: 1 << 28 });
+        console.warn(list.split('\n').filter((l) => /mpq|\.exe/i.test(l)).slice(0, 60).join('\n'));
+      } catch (e) {
+        console.warn(`fetch-wow: installer ${src.inno} failed: ${e.message}`);
+      }
+      rmSync(dir, { recursive: true, force: true });
+      continue;
+    }
+    const url = src.url;
     const ext = (url.match(/\.(zip|7z|rar|tar|gz)(?:$|\?)/i)?.[1] ?? 'zip').toLowerCase();
     const archive = join(dir, `wow.${ext}`);
     try {
