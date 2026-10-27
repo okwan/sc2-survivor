@@ -1,0 +1,16 @@
+# Temporary: iterate on the WoW interface extraction without waiting for the Brood War step.
+name: WoW probe
+on:
+  push:
+    branches: ['claude/project-thread-k2dpai']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/probe-wow.mjs
