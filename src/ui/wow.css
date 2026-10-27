@@ -63,10 +63,11 @@ html.wow-dialog .modal::before {
 /* the title plate on top of a dialog */
 html.wow .modal > h2:first-child {
   position: relative;
-  margin: -46px auto 12px;
+  z-index: 2;
+  margin: -40px auto 12px;
   width: fit-content;
   min-width: 180px;
-  padding: 12px 40px 16px;
+  padding: 14px 40px 16px;
   font-size: 15px;
   color: var(--wow-gold);
   text-align: center;
