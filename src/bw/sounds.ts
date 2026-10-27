@@ -27,7 +27,7 @@ export const BW_SOUNDS: Record<string, string[]> = {
   'death:broodling': ['sound/zerg/broodling/zbrdth00.wav'],
   'death:hydra': ['sound/zerg/hydra/zhydth00.wav'],
   'death:roach': ['sound/zerg/lurker/zludth00.wav'],
-  'death:bane': ['sound/zerg/bugguy/zbgdth00.wav'],
+  'death:bane': ['sound/bullet/zbghit00.wav'],
   'death:muta': ['sound/zerg/mutalid/zmudth00.wav'],
   'death:ultra': ['sound/zerg/ultra/zuldth00.wav'],
   'death:zealot': ['sound/protoss/zealot/pzedth00.wav'],

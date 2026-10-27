@@ -366,6 +366,8 @@ function logIcons(read) {
   if (up) for (let i = 0; i < 61; i++) rows.push(`up ${str(u16(up, 976 + i * 2))}=${u16(up, 854 + i * 2)}`);
   if (tech) for (let i = 0; i < 44; i++) rows.push(`tech ${str(u16(tech, 616 + i * 2))}=${u16(tech, 528 + i * 2)}`);
   console.log('fetch-bw: icons ' + rows.join(' | '));
+  const dlg = ['dlgs\\terran.grp', 'dlgs\\zerg.grp', 'dlgs\\protoss.grp', 'dlgs\\tile.grp', 'dlgs\\dlg.grp', 'dlgs\\tdlg.pcx', 'game\\tdlg.pcx', 'dlgs\\terran.pcx', 'glue\\palmm\\dlg.grp', 'game\\tblink.pcx', 'dlgs\\tframe.grp'];
+  console.log('fetch-bw: dialog art ' + dlg.map((p) => `${p}=${read(p)?.length ?? 'no'}`).join(' '));
 }
 
 async function main() {
