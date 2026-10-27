@@ -46,7 +46,8 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
     }
     case 'cone': {
       const reach = st.area;
-      const t = g.nearestEnemy(p.x, p.y, reach + 40);
+      // melee swings at a boss in reach first, so it isn't screened by its adds
+      const t = g.bosses.find((b) => b.hp > 0 && hyp(b.x - p.x, b.y - p.y) < reach + b.radius) ?? g.nearestEnemy(p.x, p.y, reach + 40);
       if (!t) return false;
       const isBlade = def.id === 'blades';
       const half = isBlade ? 1.05 : 0.6;
@@ -83,9 +84,11 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       return any || true;
     }
     case 'mine': {
+      // spread around the hero rather than all on the path behind them
+      const a0 = Math.random() * TAU;
       for (let i = 0; i < st.count; i++) {
-        const a = Math.random() * TAU;
-        const d = 30 + Math.random() * 70;
+        const a = a0 + (i / st.count) * TAU + (Math.random() - 0.5) * 0.6;
+        const d = 60 + Math.random() * 140;
         g.addMine(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, st.damage, st.area, st.duration, s.slot);
       }
       return true;
@@ -149,6 +152,7 @@ export function castSpell(g: Game, s: SpellInstance): boolean {
       g.forEnemiesInRadius(p.x, p.y, st.area, (e) => {
         const a = Math.atan2(e.y - p.y, e.x - p.x);
         g.hit(e, st.damage, s.slot, { kx: Math.cos(a) * 420, ky: Math.sin(a) * 420, tags: def.tags });
+        e.slow = Math.max(e.slow, 1.2); // a short stun: slow is capped at 70% and wears off over ~0.6 s
       });
       g.addFx(fx.ring(), p.x, p.y, def.color, 0.1, (st.area * 2) / 224, 0.35, 1);
       g.addFx(fx.soft(), p.x, p.y, def.color, 0.5, (st.area * 2) / 128, 0.3, 0.5);

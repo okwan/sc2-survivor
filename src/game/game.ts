@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
+import { DIFFICULTIES, type DifficultyDef } from '../data/difficulty';
 import { ENEMIES, ZONES, type BossDef, type EnemyDef, type ZoneDef } from '../data/enemies';
 import { rollGear, type GearItem } from '../data/items';
 import { RACE_DEFS, type RaceDef } from '../data/races';
@@ -36,6 +37,7 @@ export interface RunResult {
   zone: ZoneDef;
   race: RaceId;
   endless: boolean;
+  difficulty: DifficultyDef;
   damage: { name: string; icon: string; dmg: number }[];
   killedBy: string;
 }
@@ -119,7 +121,11 @@ export class Game {
   private heroAngle = 0;
   barrierSprite!: Sprite;
 
+  diff: DifficultyDef = DIFFICULTIES[save.difficulty] ?? DIFFICULTIES[0];
   time = 0;
+  /** Real seconds left of a hit-stop freeze (boss kills) and of slow motion (elite kills). */
+  private hitstop = 0;
+  private slowmo = 0;
   paused = false;
   over = false;
   victoryShown = false;
@@ -174,7 +180,7 @@ export class Game {
   private nextElite = 90;
   private nextSurge = 60;
   private nextMagnet = 75;
-  private cacheCost = 25;
+  private cacheCost = -1; // set on first use: starts higher in later zones
   private cacheMsgT = 0;
   private endlessBossT = 120;
   private endlessIdx = 0;
@@ -399,7 +405,7 @@ export class Game {
     const mast = sp.mastery ?? 0;
     const usesCount = k === 'bolt' || k === 'lob' || k === 'summon' || k === 'orbit' || k === 'mine' || k === 'beam' || k === 'field' || k === 'chain';
     sp.stats = {
-      damage: b.damage * (1 + (m.damage ?? 0) + sp.bonus) * (k === 'barrier' ? 1 : s.damage),
+      damage: b.damage * (1 + (m.damage ?? 0) + sp.bonus) * s.damage,
       cooldown: (b.cooldown * Math.max(0.3, 1 - (m.cooldown ?? 0))) / (1 + s.haste + mast * 0.04),
       count: Math.floor(b.count + (m.count ?? 0) + (usesCount && k !== 'chain' ? s.extraProj : 0) + 1e-6),
       area: b.area * (1 + (m.area ?? 0) + mast * 0.05) * (k === 'bolt' || k === 'summon' ? 1 : s.area),
@@ -428,7 +434,8 @@ export class Game {
 
   get xpNeeded(): number {
     const l = this.player.level - 1;
-    return Math.round(6 + l * 2.6 + Math.pow(l, 1.75) * 0.24);
+    // steeper early: the old curve gave ~12 level-ups in the first minute, a card screen every 5 s
+    return Math.round(8 + l * 3 + Math.pow(l, 1.8) * 0.22);
   }
 
   // ------------------------------------------------------------ enemies
@@ -437,7 +444,7 @@ export class Game {
     // harder zones ramp up to their full tier over the first ~70% of the run instead of starting there
     const ramp = Math.min(1, 0.2 + (0.8 * m) / (this.zone.minutes * 0.7));
     const tier = (1 + (this.zone.tier - 1) * ramp) * (this.endless ? 1 + (m - this.zone.minutes) * 0.08 : 1);
-    return { hp: tier * (1 + m * 0.16 + m * m * 0.012), dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) };
+    return { hp: tier * (1 + m * 0.16 + m * m * 0.012) * this.diff.hp, dmg: Math.pow(tier, 0.85) * (1 + m * 0.07) * this.diff.dmg };
   }
 
   spawnEnemy(def: EnemyDef, x: number, y: number, opts: { hpMult?: number; elite?: boolean; boss?: BossDef; final?: boolean; scale?: number } = {}): Enemy | null {
@@ -476,10 +483,10 @@ export class Game {
     if (opts.boss) {
       const b = opts.boss;
       // final bosses were long, low-threat fights; they have less health and attack more often instead
-      const bossHp = b.hp * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1);
+      const bossHp = b.hp * (opts.final ? 0.65 : 1) * Math.pow(this.zone.tier, 0.5) * (this.endless ? 1 + this.endlessIdx * 0.6 : 1) * this.diff.hp;
       e.maxHp = bossHp;
       e.speed = b.speed;
-      e.damage = b.damage * Math.pow(this.zone.tier, 0.6);
+      e.damage = b.damage * Math.pow(this.zone.tier, 0.6) * this.diff.dmg;
       e.radius = b.radius;
       e.mass = 20;
       e.xp = 60;
@@ -723,20 +730,22 @@ export class Game {
     if (e.lair) {
       e.lair.cleared = true;
       e.lair.sprite.alpha = 0.4;
-      const rar = Math.min(4, Math.max(2, rollRarity(this.stats.luck + 0.5) + 1)) as Rarity;
+      const rar = Math.min(4, Math.max(2, rollRarity(this.stats.luck + this.diff.luck + 0.5) + 1)) as Rarity;
       this.dropPickup('gear', e.x, e.y, 0, rollGear(this.race.id, rar, this.zone.tier));
       this.hooks.toast('Guardian slain! Gear dropped.', '#ffd34d');
     } else if (e.elite) {
       this.dropPickup('medkit', e.x - 10, e.y, 0);
     }
+    if (e.elite && !e.boss) this.slowmo = Math.max(this.slowmo, 0.18);
     if (e.boss) {
       this.bossesKilled++;
       sfx('explode');
       this.shake(16);
+      this.hitstop = 0.08;
       for (let k = 0; k < 12; k++) this.dropPickup('mineral', e.x + (Math.random() - 0.5) * 120, e.y + (Math.random() - 0.5) * 120, Math.ceil(6 * this.stats.minerals));
       this.dropPickup('medkit', e.x, e.y + 30, 0);
       this.dropPickup('magnet', e.x, e.y - 30, 0);
-      const rar = Math.min(4, rollRarity(this.stats.luck + 1) + 1) as Rarity;
+      const rar = Math.min(4, rollRarity(this.stats.luck + this.diff.luck + 1) + 1) as Rarity;
       const loot = rollGear(this.race.id, rar, this.zone.tier + (e.boss.final ? 1 : 0));
       if (e.boss.final && !this.endless) {
         this.removeEnemyAt(i);
@@ -788,6 +797,9 @@ export class Game {
       const a = Math.min(p.barrier, dmg);
       p.barrier -= a;
       dmg -= a;
+      // the results screen shows absorbed damage for barrier spells
+      const bar = this.spells.find((x) => x.def.kind === 'barrier');
+      if (bar) bar.dmgDone += a;
     }
     if (dmg > 0 && p.shield > 0) {
       const a = Math.min(p.shield, dmg);
@@ -849,6 +861,7 @@ export class Game {
       zone: this.zone,
       race: this.race.id,
       endless: this.endless,
+      difficulty: this.diff,
       killedBy: won ? '' : this.lastHitBy,
       damage: [
         ...this.spells.map((s) => ({ name: s.def.name, icon: spellIcon(s.def.id, s.def.icon), dmg: s.dmgDone })),
@@ -1053,7 +1066,9 @@ export class Game {
       }
     }
     const str = fmtDmg(v);
-    const d = this.floatText(x + (Math.random() - 0.5) * 16, y, crit ? str + '!' : str, crit ? 0xffd040 : 0xffffff, crit ? 0.75 : 0.5);
+    // bigger hits read bigger: 0.42 at 10 damage up to ~0.7 at 10k
+    const size = Math.min(0.75, 0.34 + Math.log10(Math.max(1, v)) * 0.09) * (crit ? 1.3 : 1);
+    const d = this.floatText(x + (Math.random() - 0.5) * 16, y, crit ? str + '!' : str, crit ? 0xffd040 : 0xffffff, size);
     d.uid = crit ? 0 : uid;
     d.val = v;
   }
@@ -1242,7 +1257,16 @@ export class Game {
       this.render(Math.min(dtMs / 1000, 1 / 20));
       return;
     }
-    const dt = Math.min(dtMs / 1000, 1 / 20);
+    if (this.hitstop > 0) {
+      this.hitstop -= dtMs / 1000;
+      this.render(0);
+      return;
+    }
+    let dt = Math.min(dtMs / 1000, 1 / 20);
+    if (this.slowmo > 0) {
+      this.slowmo -= dt;
+      dt *= 0.4;
+    }
     this.time += dt;
     if (this.timers.length) {
       const due = this.timers.filter((t) => t.at <= this.time);
@@ -1418,7 +1442,7 @@ export class Game {
     }
     // regular spawns
     // a little more pressure in the first minutes so the start isn't empty
-    const rate = (2.4 + m * 0.75 + m * m * 0.03) * (this.endless ? 1.5 : 1);
+    const rate = (2.4 + m * 0.75 + m * m * 0.03) * (this.endless ? 1.5 : 1) * this.diff.spawn;
     // cap the backlog so a full map can't release hundreds of enemies in one frame
     this.spawnAcc = Math.min(this.spawnAcc + rate * dt, 12);
     let wave = z.waves[0];
@@ -1535,8 +1559,8 @@ export class Game {
           const ly = e.lair.y - e.y;
           const ld = hyp(lx, ly);
           if (ld < 20) {
+            // no heal on the way home: chipping a guardian down over several visits is fair play
             e.asleep = true;
-            e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.25);
           } else {
             e.x += (lx / ld) * e.speed * 1.5 * dt;
             e.y += (ly / ld) * e.speed * 1.5 * dt;
@@ -1730,8 +1754,11 @@ export class Game {
       if (f.tick <= 0) {
         f.tick = 0.4;
         this.forEnemiesInRadius(f.x, f.y, f.r, (e) => {
-          this.hit(e, f.damage, f.slot, { quiet: true, tags: f.tags });
           e.slow = Math.max(e.slow, f.slowAmt);
+          // overlapping fields of one spell share a tick, so stacking storms isn't a multiplier
+          if (f.slot >= 0 && this.time - e.hitStamp[f.slot] < 0.35) return;
+          if (f.slot >= 0) e.hitStamp[f.slot] = this.time;
+          this.hit(e, f.damage, f.slot, { quiet: true, tags: f.tags });
         });
         if (Math.random() < 0.7) {
           const a = Math.random() * Math.PI * 2;
@@ -1888,6 +1915,7 @@ export class Game {
 
     // supply caches
     this.cacheMsgT -= dt;
+    this.cacheCost = this.cacheCostNow;
     for (const c of this.caches) {
       if (c.opened && c.restockAt !== undefined && this.time >= c.restockAt) {
         // caches restock, so minerals stay worth collecting late in the run
@@ -1898,11 +1926,12 @@ export class Game {
       if (Math.abs(c.x - p.x) > 40 || Math.abs(c.y - p.y) > 40) continue;
       if (p.minerals >= this.cacheCost) {
         p.minerals -= this.cacheCost;
-        this.cacheCost = Math.round(this.cacheCost * 1.5 + 10);
+        // a flat step: the old x1.5 growth left players ending runs with hundreds of unspent minerals
+        this.cacheCost += 20;
         c.opened = true;
         c.restockAt = this.time + 240;
         c.sprite.alpha = 0.35;
-        const rar = rollRarity(this.stats.luck + 0.2);
+        const rar = Math.max(1, rollRarity(this.stats.luck + this.diff.luck + 0.2)) as Rarity;
         sfx('select');
         this.hooks.gear(rollGear(this.race.id, rar, this.zone.tier));
         this.paused = true;
@@ -1936,7 +1965,7 @@ export class Game {
   }
 
   get cacheCostNow() {
-    return this.cacheCost;
+    return this.cacheCost >= 0 ? this.cacheCost : 25 + 10 * Math.max(0, ZONES.findIndex((z) => z.id === this.zone.id));
   }
 
   // ------------------------------------------------------------ render

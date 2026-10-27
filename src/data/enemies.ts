@@ -76,8 +76,9 @@ export const ZONES: ZoneDef[] = [
       { from: 0, pool: [['zergling', 10]] },
       { from: 1.5, pool: [['zergling', 8], ['hydralisk', 2]] },
       { from: 4, pool: [['zergling', 7], ['hydralisk', 2], ['roach', 2]] },
-      { from: 7, pool: [['zergling', 6], ['baneling', 2], ['hydralisk', 2], ['roach', 3]] },
-      { from: 11, pool: [['zergling', 5], ['baneling', 3], ['hydralisk', 3], ['roach', 4], ['mutalisk', 2]] },
+      // Mar Sara was a free win: banelings and mutalisks now arrive earlier
+      { from: 6, pool: [['zergling', 6], ['baneling', 2], ['hydralisk', 2], ['roach', 3]] },
+      { from: 9, pool: [['zergling', 5], ['baneling', 3], ['hydralisk', 3], ['roach', 4], ['mutalisk', 2]] },
     ],
     elite: 'ultralisk', guardian: 'ultralisk',
     bosses: [
@@ -89,7 +90,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'bf', name: 'Cerebrate Zasz', title: 'Overmind\'s Voice', shape: 'ultra', color: 0x9a2ad0, hp: 16000, speed: 75, damage: 34, radius: 64, abilities: ['burst', 'summon', 'slam', 'barrage'], summon: 'hydralisk' },
   },
   {
-    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.6, minutes: 16,
+    id: 'char', name: 'Char', desc: 'A volcanic world of ash and lava. The Swarm\'s heart beats here.', tier: 1.4, minutes: 16,
     ground: [0x3a2420, 0x2c1a18], doodad: 0xff5a20,
     waves: [
       { from: 0, pool: [['zergling', 8], ['broodling', 4]] },
@@ -108,7 +109,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'cf', name: 'Queen of Blades', title: 'Sovereign of the Swarm', shape: 'hydra', color: 0xc040ff, hp: 24000, speed: 110, damage: 38, radius: 54, abilities: ['charge', 'burst', 'summon', 'barrage'], summon: 'mutalisk' },
   },
   {
-    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 2.4, minutes: 18,
+    id: 'aiur', name: 'Aiur', desc: 'The fallen jungle homeworld of the Protoss, haunted by rogue templar.', tier: 1.9, minutes: 18,
     ground: [0x2e4a2c, 0x243e22], doodad: 0x4fd2ff,
     waves: [
       // the Swarm is on Aiur too: lighter zerglings open the zone before the zealots take over
@@ -128,7 +129,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'af', name: 'Ulrezaj', title: 'Archon of Shadows', shape: 'archon', color: 0x5020c0, hp: 34000, speed: 85, damage: 44, radius: 66, abilities: ['burst', 'barrage', 'summon', 'slam'], summon: 'zealot' },
   },
   {
-    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 3.4, minutes: 18,
+    id: 'korhal', name: 'Korhal', desc: 'The Dominion capital. Imperial battalions hold every street.', tier: 2.5, minutes: 18,
     ground: [0x3a3e44, 0x30343a], doodad: 0xd04040,
     waves: [
       { from: 0, pool: [['marine', 6], ['zergling', 4]] },
@@ -147,7 +148,7 @@ export const ZONES: ZoneDef[] = [
     final: { id: 'kf', name: 'Emperor Mengsk', title: 'Dominion Warlord', shape: 'marine', color: 0xc02020, hp: 46000, speed: 95, damage: 48, radius: 56, abilities: ['barrage', 'summon', 'charge', 'burst', 'slam'], summon: 'firebat' },
   },
   {
-    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 4.6, minutes: 20,
+    id: 'ulnar', name: 'Ulnar', desc: 'An ancient Xel\'Naga temple where the Void bleeds into reality.', tier: 3.2, minutes: 20,
     ground: [0x1e1c2e, 0x181626], doodad: 0x9a4aff,
     waves: [
       { from: 0, pool: [['hybridling', 4], ['zergling', 8]] },

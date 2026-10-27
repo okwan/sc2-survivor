@@ -12,14 +12,14 @@ export type Card =
   | { kind: 'fallback'; id: 'minerals' | 'heal'; rarity: Rarity; key: string };
 
 /** Extra damage on a spell from the card's rarity. */
-export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.5];
+export const RARITY_SPELL_BONUS = [0, 0.1, 0.2, 0.35, 0.8];
 
 /** Late game: a maxed spell can take this many mastery cards. */
 export const MAX_MASTERY = 5;
 const MASTERY_DAMAGE = 0.15;
 
 export function rollRarity(luck: number): Rarity {
-  const w = [62, 24, 10, 3.4, 0.9];
+  const w = [60, 24, 10.5, 4, 1.5];
   for (let i = 1; i < 5; i++) w[i] *= 1 + luck * (1 + i * 0.6);
   const total = w.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;

@@ -23,6 +23,8 @@ export function grantRewards(r: RunResult): Rewards {
   if (r.won) lines.push(['Zone cleared', 100]);
   const mult = Math.pow(r.zone.tier, 0.7);
   if (mult > 1.01) lines.push([`${r.zone.name} difficulty`, lines.reduce((a, [, v]) => a + v, 0) * (mult - 1)]);
+  const dm = r.difficulty.rewards;
+  if (dm > 1.01) lines.push([`${r.difficulty.name} mode`, lines.reduce((a, [, v]) => a + v, 0) * (dm - 1)]);
   const sub = lines.reduce((a, [, v]) => a + v, 0);
   if (perkLevel('veteran') && rs.talentXp < bestRaceXp() && RACES.length > 1) lines.push(["Veteran's Lessons", sub * 0.2]);
   for (const l of lines) l[1] = Math.round(l[1]);
@@ -31,7 +33,7 @@ export function grantRewards(r: RunResult): Rewards {
   rs.talentXp += total;
   rs.runs++;
   // at least 1 vespene for any run past a minute, so the rewards loop starts on the first try
-  const vespene = Math.max(mins >= 1 ? 1 : 0, r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 3));
+  const vespene = Math.max(mins >= 1 ? 1 : 0, Math.round((r.bosses * 2 + (r.won ? 10 : 0) + Math.floor(mins / 3)) * r.difficulty.rewards));
   save.vespene += vespene;
   let unlocked: string | null = null;
   const zi = ZONES.findIndex((z) => z.id === r.zone.id);

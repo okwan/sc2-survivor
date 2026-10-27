@@ -1,6 +1,7 @@
 import type { Texture } from 'pixi.js';
 import { BW_UNITS, buildSprites, bwStatus, clearStoredFiles, ingestFiles, storeFiles } from '../bw/assets';
 import { applyBwChrome, resetBwUi, spellIcon } from '../bw/ui';
+import { DIFFICULTIES } from '../data/difficulty';
 import { ZONES } from '../data/enemies';
 import { GEAR_SLOTS, PERKS, SLOT_NAMES, gearScore, type GearItem } from '../data/items';
 import { RACE_DEFS } from '../data/races';
@@ -68,6 +69,7 @@ export function showMenu(shell: Shell) {
     <div class="races"></div>
     <div class="section-title">Choose your battlefield</div>
     <div class="zones"></div>
+    <div class="diffs"></div>
     <div class="menu-actions">
       <button class="btn" data-a="talents">Talents</button>
       <button class="btn" data-a="armory">Armory</button>
@@ -100,6 +102,7 @@ export function showMenu(shell: Shell) {
       const unlocked = save.races[r].zonesCleared;
       const zi = ZONES.findIndex((z) => z.id === save.lastZone);
       if (zi > unlocked) save.lastZone = ZONES[0].id;
+      if (ZONES.findIndex((z) => z.id === save.lastZone) >= unlocked) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
@@ -118,12 +121,34 @@ export function showMenu(shell: Shell) {
     b.onclick = () => {
       if (locked) return;
       save.lastZone = z.id;
+      if (!cleared) save.difficulty = 0;
       persist();
       sfx('select');
       showMenu(shell);
     };
     zonesEl.append(b);
   });
+
+  // difficulty: Hard and Brutal open on zones this race has already cleared
+  const diffsEl = inner.querySelector('.diffs')!;
+  const zoneCleared = ZONES.findIndex((z) => z.id === save.lastZone) < rs.zonesCleared;
+  if (!zoneCleared) save.difficulty = 0;
+  for (const d of DIFFICULTIES) {
+    const b = document.createElement('button');
+    const locked = d.id > 0 && !zoneCleared;
+    b.className = 'diff' + (d.id === save.difficulty ? ' sel' : '') + (locked ? ' locked' : '');
+    b.style.setProperty('--dc', d.color);
+    b.title = locked ? 'Clear this zone to unlock' : d.desc;
+    b.innerHTML = `<b>${locked ? '🔒 ' : ''}${d.name}</b><span>${d.id === 0 ? 'Standard' : `x${d.rewards} rewards`}</span>`;
+    b.onclick = () => {
+      if (locked) return;
+      save.difficulty = d.id;
+      persist();
+      sfx('select');
+      showMenu(shell);
+    };
+    diffsEl.append(b);
+  }
 
   inner.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
     b.onclick = () => {
@@ -465,6 +490,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
   const n = g.firstLevelUp && perkLevel('opening') ? 4 : 3;
   g.firstLevelUp = false;
   let cards: Card[] = dealCards(g, n);
+  if (cards.some((c) => c.rarity === 4)) sfx('win'); // a legendary in the hand gets a fanfare
   let banishMode = false;
   let showStats = false;
   // free rerolls don't raise the price of the paid ones
@@ -491,6 +517,20 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     if (g.pendingLevels > 0) showLevelUp(shell, g, onDone);
     else onDone();
   };
+  const autoPick = () => {
+    const order = { upgrade: 4, spell: 3, mastery: 2, passive: 1, fallback: 0 } as const;
+    let hand = cards;
+    while (g.pendingLevels > 0) {
+      const best = hand.slice().sort((a, b) => b.rarity - a.rarity || order[b.kind] - order[a.kind])[0];
+      applyCard(g, best);
+      g.pendingLevels--;
+      hand = dealCards(g, 3);
+    }
+    sfx('select');
+    o.remove();
+    hideTip();
+    onDone();
+  };
   const reroll = () => {
     const free = g.stats.rerolls - g.rerollsUsed;
     if (free <= 0) {
@@ -515,7 +555,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
     cards.forEach((c, i) => {
       const v = describeCard(g, c);
       const b = document.createElement('button');
-      b.className = 'card';
+      b.className = 'card' + (c.rarity >= 3 ? ` r${c.rarity}` : '');
       b.style.setProperty('--rc', RARITY_COLORS[c.rarity]);
       b.innerHTML = `<kbd class="key">${i + 1}</kbd><div class="rar">${RARITY_NAMES[c.rarity]}</div><div class="ic">${v.icon}</div><div class="nm">${v.title}</div><div class="ty">${v.type}</div><ul>${v.lines.map((l) => `<li>${l}</li>`).join('')}</ul><div class="ds">${v.desc}</div>`;
       b.onclick = () => pick(c);
@@ -540,6 +580,15 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
         render();
       };
       acts.append(bb);
+    }
+    if (g.pendingLevels > 2 && !banishMode) {
+      // a magnet sweep can bank a dozen levels at once: let the player take the rest in one go
+      const ab = document.createElement('button');
+      ab.className = 'btn small';
+      ab.innerHTML = `<kbd>A</kbd> Auto-pick ${g.pendingLevels}`;
+      ab.title = 'Take the best card from a fresh hand for each remaining level';
+      ab.onclick = autoPick;
+      acts.append(ab);
     }
     const sb = document.createElement('button');
     sb.className = 'btn small';
@@ -567,6 +616,7 @@ export function showLevelUp(shell: Shell, g: Game, onDone: () => void) {
       const i = parseInt(c.slice(5)) - 1;
       if (cards[i]) pick(cards[i]);
     } else if (c === 'KeyR') reroll();
+    else if (c === 'KeyA' && g.pendingLevels > 2 && !banishMode) autoPick();
     else if (c === 'KeyB' && g.stats.banishes > g.banishesUsed) {
       banishMode = !banishMode;
       render();
@@ -715,7 +765,7 @@ export function showResults(shell: Shell, r: RunResult, rw: Rewards) {
   const maxDmg = Math.max(1, ...r.damage.map((d) => d.dmg));
   const [have, need] = nextPointProgress(r.race);
   box.innerHTML = `<h2 style="color:${won ? 'var(--gold)' : 'var(--danger)'}">${won ? 'Victory' : 'Defeated'}</h2>
-    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.endless ? ' · Endless' : ''}</div>
+    <div class="muted">${RACE_DEFS[r.race].name} · ${r.zone.name}${r.difficulty.id ? ` · ${r.difficulty.name}` : ''}${r.endless ? ' · Endless' : ''}</div>
     ${!won && r.killedBy ? `<div style="margin-top:4px">Killed by <b style="color:var(--danger)">${r.killedBy}</b></div>` : ''}
     <table style="margin:10px 0"><tr><td>Time survived</td><td>${fmtTime(r.time)}</td></tr><tr><td>Level</td><td>${r.level}</td></tr><tr><td>Kills</td><td>${r.kills}</td></tr><tr><td>Bosses</td><td>${r.bosses}</td></tr></table>
     <div class="section-title" style="margin:10px 0 4px">Damage</div>
