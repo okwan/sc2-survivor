@@ -1,7 +1,9 @@
 import { bwFile, bwPalette } from './assets';
 import { decodePcx } from './formats';
 import { drawGrpFrame, parseGrp, type GrpFile } from './grp';
-import { BW_UI, ICONS, SPELL_ICONS } from './ui-files';
+import { BW_UI, ICONS, RACE_UI, SPELL_ICONS } from './ui-files';
+import { wowIcon } from '../wow/icons';
+import { hasWow } from '../wow/ui';
 
 /**
  * Brood War interface art for the DOM HUD and menus: the race consoles, command card icons,
@@ -230,6 +232,11 @@ const BUTTON = { off: 0, on: 1, hover: 2 };
  */
 export function applyBwChrome(race = 'terran') {
   const root = document.documentElement;
+  if (hasWow()) {
+    // the WoW interface replaces all of it
+    root.classList.remove('bw-box', 'bw-btn', 'bw-cursor', 'bw-menu');
+    return;
+  }
   const cur = cursorCss();
   const bg = menuBgUrl();
   const box = boxUrl();
@@ -247,18 +254,28 @@ export function applyBwChrome(race = 'terran') {
   else root.style.removeProperty('--bw-menu-bg');
 }
 
-/** HTML for a spell's icon: the Brood War command icon when loaded, otherwise its emoji. */
+/** HTML for a spell's icon: the WoW icon, else the Brood War command icon, otherwise its emoji. */
 export function spellIcon(id: string, emoji: string): string {
-  return frameIcon(SPELL_ICONS[id], emoji);
+  return wowIconHtml(id) ?? frameIcon(SPELL_ICONS[id], emoji);
 }
 
 /** HTML for a passive, perk, talent tree or other icon by game id (see ICONS), or its emoji. */
 export function bwIcon(id: string, emoji: string): string {
-  return frameIcon(ICONS[id], emoji);
+  return wowIconHtml(id) ?? frameIcon(ICONS[id], emoji);
+}
+
+function wowIconHtml(id: string): string | null {
+  const u = wowIcon(id);
+  return u ? `<img class="wowic" src="${u}" alt="">` : null;
 }
 
 /** HTML for a command card frame, or the fallback. */
 export function frameIcon(frame: number | undefined, fallback: string): string {
   const u = frame !== undefined ? iconUrl(frame) : null;
   return u ? `<img class="bwic" src="${u}" alt="">` : fallback;
+}
+
+/** HTML for a race's dash icon. */
+export function dashIcon(race: string): string {
+  return wowIconHtml(`dash_${race}`) ?? frameIcon(RACE_UI[race]?.dash, '💨');
 }

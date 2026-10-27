@@ -1,8 +1,10 @@
-# Temporary: iterate on the WoW interface extraction without waiting for the Brood War step.
+# Temporary: iterate on the WoW interface skin; screenshots go to the wow-shots branch for review.
 name: WoW probe
 on:
   push:
     branches: ['claude/project-thread-k2dpai']
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -14,6 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: sudo apt-get install -y innoextract
+      - run: npm run build
       - uses: actions/cache@v4
         with:
           path: .wow-cache
@@ -22,4 +25,17 @@ jobs:
       - run: node scripts/fetch-wow.mjs dist
         env:
           WOW_LIST: '1'
-      - run: du -sh dist/wow; ls dist/wow; ls dist/wow/interface | head -80
+      - run: du -sh dist/wow && ls dist/wow
+      - run: npm i --no-save playwright-core
+      - run: |
+          npx vite preview --port 4399 --strictPort &
+          sleep 3
+          node scripts/wow-shots.mjs http://localhost:4399/ shots
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - run: |
+          cd shots
+          git init -q -b wow-shots
+          git add .
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "shots ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" wow-shots

@@ -1,0 +1,347 @@
+/*
+ * World of Warcraft 1.12 skin. Everything here is under html.wow, set by src/wow/ui.ts once the
+ * client's interface files are deployed; the art comes in through the --wow-* variables.
+ */
+
+html.wow {
+  --text: #ffffff;
+  --muted: #a0a0a0;
+  --accent: #ffd100;
+  --gold: #ffd100;
+  --line: #5a5a5a;
+  --line-hi: #c8a050;
+  --wow-gold: #ffd100;
+  --wow-green: #1eff00;
+  --wow-blue: #0070dd;
+  --wow-purple: #a335ee;
+  --wow-orange: #ff8000;
+  --wow-tip-bg: rgba(9, 9, 25, 0.92);
+  font-family: 'Friz Quadrata', 'Palatino Linotype', Georgia, serif;
+}
+html.wow body { font-family: 'Friz Quadrata', 'Palatino Linotype', Georgia, serif; }
+html.wow h1, html.wow h2, html.wow h3 { letter-spacing: 0; font-weight: normal; }
+html.wow .gold, html.wow .accent { color: var(--wow-gold); }
+html.wow kbd { border-color: #6a5a2a; color: var(--wow-gold); background: rgba(0, 0, 0, 0.5); font-family: 'Arial Narrow WoW', 'Arial Narrow', sans-serif; }
+html.wow-cursor, html.wow-cursor * { cursor: var(--wow-cursor) !important; }
+
+/* ---------------------------------------------------------- frames */
+/* Dialog frames: the gold-trimmed dialog border over the dark marble background, inset like the client's. */
+html.wow-dialog .panel,
+html.wow-dialog .modal {
+  position: relative;
+  isolation: isolate;
+  background: none;
+  border-style: solid;
+  border-width: 24px;
+  border-color: transparent;
+  border-image: var(--wow-dialog) var(--wow-dialog-slice) / 24px round;
+  box-shadow: none;
+  padding: 10px 14px;
+}
+html.wow-dialog .panel::before,
+html.wow-dialog .modal::before {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  z-index: -1;
+  background: var(--wow-dialog-bg) repeat, #000;
+  background-size: 64px 64px;
+}
+/* the title plate on top of a dialog */
+html.wow .modal > h2:first-child {
+  position: relative;
+  margin: -46px auto 12px;
+  width: fit-content;
+  min-width: 180px;
+  padding: 12px 40px 16px;
+  font-size: 15px;
+  color: var(--wow-gold);
+  text-align: center;
+  background: var(--wow-header) center / 100% 100% no-repeat;
+  text-shadow: 1px 1px 0 #000;
+  white-space: nowrap;
+}
+
+/* Tooltip-style boxes: cards, list rows, the tooltip itself. The dark fill sits under the border, inset like the client's. */
+html.wow-tip .tooltip,
+html.wow-tip .race-card,
+html.wow-tip .zone,
+html.wow-tip .hero-pick,
+html.wow-tip .diff,
+html.wow-tip .mut,
+html.wow-tip .daily,
+html.wow-tip .tree,
+html.wow-tip .item,
+html.wow-tip .perk,
+html.wow-tip .ach,
+html.wow-tip .card,
+html.wow-tip .tab,
+html.wow-tip .lvstats,
+html.wow-tip .toast,
+html.wow-tip .objective {
+  isolation: isolate;
+  background: none;
+  border-style: solid;
+  border-width: 12px;
+  border-color: transparent;
+  border-image: var(--wow-tip) var(--wow-tip-slice) / 12px round;
+  box-shadow: none;
+}
+html.wow-tip .race-card,
+html.wow-tip .zone,
+html.wow-tip .hero-pick,
+html.wow-tip .diff,
+html.wow-tip .mut,
+html.wow-tip .daily,
+html.wow-tip .tree,
+html.wow-tip .item,
+html.wow-tip .perk,
+html.wow-tip .ach,
+html.wow-tip .card,
+html.wow-tip .tab,
+html.wow-tip .lvstats,
+html.wow-tip .toast { position: relative; }
+html.wow-tip .tooltip::before,
+html.wow-tip .race-card::before,
+html.wow-tip .zone::before,
+html.wow-tip .hero-pick::before,
+html.wow-tip .diff::before,
+html.wow-tip .mut::before,
+html.wow-tip .daily::before,
+html.wow-tip .tree::before,
+html.wow-tip .item::before,
+html.wow-tip .perk::before,
+html.wow-tip .ach::before,
+html.wow-tip .card::before,
+html.wow-tip .tab::before,
+html.wow-tip .lvstats::before,
+html.wow-tip .toast::before,
+html.wow-tip .objective::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  z-index: -1;
+  border-radius: 4px;
+  background: var(--wow-tip-bg);
+  pointer-events: none;
+}
+html.wow-tip .sel,
+html.wow-tip .ach.got,
+html.wow-tip .card:hover,
+html.wow-tip .race-card:hover:not(.sel),
+html.wow-tip .zone:hover:not(.locked) {
+  border-image-source: var(--wow-tip-gold);
+  box-shadow: none;
+}
+html.wow-tip .race-card.sel::before,
+html.wow-tip .zone.sel::before,
+html.wow-tip .hero-pick.sel::before,
+html.wow-tip .diff.sel::before {
+  background: linear-gradient(180deg, rgba(90, 70, 0, 0.55), var(--wow-tip-bg) 70%);
+}
+html.wow .tooltip { font-size: 13px; line-height: 1.35; max-width: 300px; }
+html.wow .tooltip b { color: #fff; font-weight: normal; font-size: 15px; }
+html.wow .tooltip .muted { color: var(--wow-gold); }
+
+/* ---------------------------------------------------------- buttons */
+/* The red UIPanelButton: 12px end caps, the middle stretched, gold text. */
+html.wow-btn .btn {
+  position: relative;
+  border-style: solid;
+  border-width: 0 12px;
+  border-color: transparent;
+  border-image: var(--wow-btn-up) 0 12 fill / 0 12px stretch;
+  background: none;
+  clip-path: none;
+  color: var(--wow-gold);
+  font-family: 'Friz Quadrata', Georgia, serif;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  padding: 6px 12px 7px;
+  min-height: 28px;
+  text-shadow: 1px 1px 0 #000;
+  filter: none;
+}
+html.wow-btn .btn::after {
+  content: '';
+  position: absolute;
+  inset: 0 -12px;
+  border: 0 solid transparent;
+  border-width: 0 12px;
+  border-image: var(--wow-btn-hi) 0 12 fill / 0 12px stretch;
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+}
+html.wow-btn .btn:hover { filter: none; color: #fff; }
+html.wow-btn .btn:hover::after { opacity: 1; }
+html.wow-btn .btn:active { border-image-source: var(--wow-btn-down); transform: none; padding: 7px 11px 6px 13px; }
+html.wow-btn .btn:disabled { border-image-source: var(--wow-btn-off); color: #808080; filter: none; }
+html.wow-btn .btn:disabled::after { display: none; }
+html.wow-btn .btn.small { font-size: 12px; padding: 4px 10px 5px; min-height: 24px; }
+html.wow-btn .btn.primary { color: var(--wow-gold); }
+html.wow-btn .btn.danger { color: #ff6060; }
+html.wow-btn .menu-actions .btn.primary { font-size: 20px; padding: 10px 40px 12px; }
+html.wow .tab { font-weight: normal; color: var(--wow-gold); padding: 2px 8px; }
+html.wow .tab.sel { color: #fff; }
+
+/* ---------------------------------------------------------- menu */
+html.wow .menu {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.7)),
+    var(--wow-menu-bg, none) center / cover no-repeat fixed,
+    #000;
+}
+html.wow .title h1 {
+  font-family: 'Morpheus', 'Friz Quadrata', Georgia, serif;
+  font-weight: normal;
+  background: none;
+  color: var(--wow-gold);
+  -webkit-text-fill-color: currentColor;
+  text-shadow: 2px 2px 0 #000, 0 0 18px rgba(0, 0, 0, 0.9);
+  letter-spacing: 0.02em;
+}
+html.wow .title .sub { color: #fff; letter-spacing: 0.1em; text-shadow: 1px 1px 0 #000; }
+html.wow .section-title { color: var(--wow-gold); letter-spacing: 0.05em; text-transform: none; font-size: 16px; text-shadow: 1px 1px 0 #000; }
+html.wow .race-card h2 { color: var(--wow-gold); font-size: 22px; }
+html.wow .race-card .hero { color: #fff; letter-spacing: 0.05em; text-transform: none; font-size: 13px; }
+html.wow .race-card .racial { color: var(--wow-green); }
+html.wow .race-card p, html.wow .zone p, html.wow .hero-pick span, html.wow .diff span { color: #fff; }
+html.wow .zone h3, html.wow .hero-pick b, html.wow .diff b { color: var(--wow-gold); font-weight: normal; }
+html.wow .zone .meta, html.wow .muted { color: #a0a0a0; }
+html.wow .mut span { color: var(--wow-gold); }
+html.wow .daily b { color: var(--wow-gold); font-weight: normal; }
+html.wow .footer { color: #808080; text-shadow: 1px 1px 0 #000; }
+html.wow .menu .controls { color: #c0c0c0; text-shadow: 1px 1px 0 #000; }
+html.wow .screen-head h2 { color: var(--wow-gold); font-size: 26px; text-shadow: 2px 2px 0 #000; }
+html.wow .records th { color: var(--wow-gold); font-weight: normal; border-color: #4a4a4a; }
+
+/* talents: square slots like the talent frame */
+html.wow .tree h3 { color: var(--wow-gold); font-weight: normal; font-size: 18px; }
+html.wow .tree .spent { color: var(--wow-green); font-weight: normal; }
+html.wow .tnode {
+  background: #0c0c0c;
+  border: 2px solid #5a5a5a;
+  color: #c0c0c0;
+  font-family: 'Arial Narrow WoW', 'Arial Narrow', sans-serif;
+  border-radius: 3px;
+}
+html.wow .tnode.avail { border-color: var(--wow-green); color: #fff; }
+html.wow .tnode.some { border-color: var(--wow-green); background: #102010; }
+html.wow .tnode.max { border-color: var(--wow-gold); background: #201a08; color: var(--wow-gold); }
+html.wow .tnode .rk { color: var(--wow-green); font-family: 'Arial Narrow WoW', 'Arial Narrow', sans-serif; font-size: 11px; background: #000; padding: 0 2px; border-radius: 2px; }
+html.wow .tnode.max .rk { color: var(--wow-gold); }
+html.wow .bar { background: #000; border-color: #4a4a4a; }
+html.wow .bar > i { background: var(--wow-statusbar, none) 0 0 / 100% 100%, #9400d3; background-blend-mode: multiply; }
+
+/* items and perks */
+html.wow .item .nm, html.wow .perk b { font-weight: normal; }
+html.wow .item .st { color: #fff; }
+html.wow .legfx { color: var(--wow-green); }
+html.wow .perk .lv { color: var(--wow-gold); }
+html.wow .ach b { color: var(--wow-gold); font-weight: normal; }
+
+/* WoW icons in an action-button frame wherever the game shows an icon */
+.wowic { width: 36px; height: 36px; display: block; border-radius: 2px; box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(120, 100, 60, 0.6); }
+.card .ic .wowic { width: 48px; height: 48px; margin: 0 auto; display: block; }
+.perk .ic .wowic { width: 40px; height: 40px; }
+h3 .wowic { display: inline-block; vertical-align: middle; width: 24px; height: 24px; }
+.dmgrow .wowic { display: inline-block; vertical-align: middle; width: 20px; height: 20px; }
+.slot .wowic { width: 100%; height: 100%; box-shadow: none; }
+html.wow .slot { border: 1px solid #000; background: #000; box-shadow: 0 0 0 1px rgba(120, 100, 60, 0.6); }
+html.wow .slot .rk { color: #fff; font-family: 'Arial Narrow WoW', 'Arial Narrow', sans-serif; font-weight: normal; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000; }
+
+/* ---------------------------------------------------------- level up and dialogs */
+html.wow .levelup h2 { font-family: 'Morpheus', 'Friz Quadrata', serif; color: var(--wow-gold); text-shadow: 2px 2px 0 #000; font-size: 44px; }
+html.wow .levelup .hint { color: #fff; }
+html.wow .card { text-align: left; padding: 10px 12px; min-height: 0; width: 230px; }
+html.wow .card .rar { color: var(--rc); letter-spacing: 0; text-transform: none; font-weight: normal; font-size: 12px; }
+html.wow .card .nm { font-weight: normal; font-size: 17px; color: var(--rc); }
+html.wow .card .ty { color: #fff; font-size: 12px; }
+html.wow .card ul { color: var(--wow-green); font-size: 13px; }
+html.wow .card .ds { color: var(--wow-gold); font-size: 12px; }
+html.wow .card .ic { margin: 4px 0; }
+html.wow .card .price { color: var(--wow-gold); font-weight: normal; position: static; margin-top: 6px; }
+html.wow .card.r3, html.wow .card.r4 { box-shadow: none; animation: cardin 0.25s backwards; }
+html.wow .modal h2 { font-weight: normal; }
+html.wow .results td:last-child { font-weight: normal; color: #fff; }
+html.wow .overlay { background: rgba(0, 0, 0, 0.55); backdrop-filter: none; }
+html.wow .loading { font-family: 'Friz Quadrata', serif; color: var(--wow-gold); }
+
+/* ---------------------------------------------------------- HUD text (raid warnings, error text) */
+html.wow .toast {
+  font-weight: normal;
+  font-size: 15px;
+  padding: 2px 10px;
+  text-shadow: 1px 1px 0 #000;
+}
+html.wow .boss-banner h2 { font-family: 'Friz Quadrata', serif; color: #ff2020; text-shadow: 2px 2px 0 #000; font-weight: normal; }
+html.wow .boss-banner div { color: var(--wow-gold); letter-spacing: 0.05em; text-transform: none; text-shadow: 1px 1px 0 #000; }
+html.wow .hud .timer { font-family: 'Friz Quadrata', serif; font-weight: normal; color: #fff; text-shadow: 2px 2px 0 #000; }
+html.wow .hud .timer small { color: var(--wow-gold); letter-spacing: 0.05em; font-weight: normal; text-shadow: 1px 1px 0 #000; }
+html.wow .hud .objective { color: var(--wow-gold); font-weight: normal; font-size: 13px; padding: 0 8px; top: 74px; }
+html.wow .hud .lvl, html.wow .hud .stats { font-weight: normal; }
+
+/* ---------------------------------------------------------- the WoW HUD (src/ui/wowhud.ts) */
+.hud.wowmode .vitals, .hud.wowmode .spells, .hud.wowmode .dash, .hud.wowmode .pausebtn,
+.hud.wowmode .xp, .hud.wowmode .stats, .hud.wowmode .bosses { display: none; }
+.hud.wowmode .objective { top: 110px; left: 16px; }
+.wowhud { position: absolute; inset: 0; pointer-events: none; font-family: 'Friz Quadrata', Georgia, serif; }
+.wowhud * { box-sizing: content-box; }
+
+.wowbar { position: absolute; left: 50%; bottom: 0; width: 1024px; height: 53px; transform-origin: 50% 100%; }
+.wowbar .strip { position: absolute; bottom: 0; width: 256px; height: 43px; background-size: 100% 100%; }
+.wowbar .xpbar { position: absolute; left: 0; top: 0; width: 1024px; height: 10px; background: rgba(0, 0, 0, 0.6); pointer-events: auto; }
+.wowbar .xpbar > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: left; background: var(--wow-statusbar) 0 0 / 100% 100%, rgb(148, 0, 140); background-blend-mode: multiply; }
+.wowbar .xpart { position: absolute; top: 0; width: 256px; height: 10px; background-size: 100% 100%; }
+.wowbar .xpbar > span { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 10px; color: #fff; text-shadow: 1px 1px 0 #000; opacity: 0; transition: opacity 0.15s; }
+.wowbar .xpbar:hover > span { opacity: 1; }
+.wowbar .cap { position: absolute; bottom: 0; width: 128px; height: 128px; background-size: 100% 100%; }
+.wowbar .cap.left { left: -96px; }
+.wowbar .cap.right { right: -96px; }
+.wowbtn { position: absolute; bottom: 4px; width: 36px; height: 36px; pointer-events: auto; }
+.wowbtn img { position: absolute; inset: 0; width: 36px; height: 36px; display: block; }
+.wowbtn .cd { position: absolute; inset: 0; }
+.wowbtn .frame { position: absolute; left: -15px; top: -14px; width: 66px; height: 66px; background: var(--wow-slot) 0 0 / 100% 100%; pointer-events: none; }
+.wowbtn.empty .frame { opacity: 0.5; }
+.wowbtn:hover:not(.empty)::after { content: ''; position: absolute; inset: 0; background: var(--wow-slot-hi) 0 0 / 100% 100%; mix-blend-mode: screen; }
+.wowbtn .count { position: absolute; right: 2px; bottom: 1px; font: 14px 'Arial Narrow WoW', 'Arial Narrow', sans-serif; color: #fff; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; z-index: 1; }
+.wowbtn.locked img { filter: grayscale(1) brightness(0.5); }
+.wowbar .micro { position: absolute; left: 702px; bottom: 2px; width: 28px; height: 58px; background-size: 100% 100%; pointer-events: auto; }
+.wowbar .bag { position: absolute; left: 981px; bottom: 3px; width: 37px; height: 37px; background-size: 100% 100%; pointer-events: auto; }
+.wowbar .bag .count { position: absolute; right: 2px; bottom: 1px; font: 13px 'Arial Narrow WoW', 'Arial Narrow', sans-serif; color: #fff; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000; }
+
+.wowunit { position: absolute; top: 4px; width: 232px; height: 100px; transform-origin: 0 0; }
+.wowunit.player { left: 0; }
+.wowunit.target { left: 250px; }
+.wowunit .art { position: absolute; inset: 0; background-size: 100% 100%; }
+.wowunit .back { position: absolute; top: 22px; width: 119px; height: 41px; background: rgba(0, 0, 0, 0.5); }
+.wowunit.player .back { left: 106px; }
+.wowunit.target .back { left: 6px; }
+.wowunit .portrait { position: absolute; top: 12px; width: 64px; height: 64px; border-radius: 50%; background-size: 100% 100%; }
+.wowunit.player .portrait { left: 42px; }
+.wowunit.target .portrait { left: 126px; }
+.wowunit .sb { position: absolute; width: 119px; height: 12px; overflow: hidden; }
+.wowunit.player .sb { left: 106px; }
+.wowunit.target .sb { left: 6px; }
+.wowunit .sb.hp { top: 41px; }
+.wowunit .sb.mp { top: 52px; }
+.wowunit .sb > i { position: absolute; inset: 0; transform-origin: left; background: var(--wow-statusbar) 0 0 / 100% 100%, #00ff00; background-blend-mode: multiply; }
+.wowunit .sb.mp > i { background-color: #0000ff; }
+.wowunit .sb.mp.energy > i { background-color: #ffff00; }
+.wowunit .sb > span { position: absolute; inset: 0; text-align: center; font: 10px/12px 'Arial Narrow WoW', 'Arial Narrow', sans-serif; color: #fff; text-shadow: 1px 1px 0 #000; }
+.wowunit .nm { position: absolute; top: 24px; width: 119px; text-align: center; font-size: 11px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; white-space: nowrap; overflow: hidden; }
+.wowunit.player .nm { left: 106px; }
+.wowunit.target .nm { left: 6px; }
+.wowunit .lvl { position: absolute; left: 38px; top: 59px; width: 30px; text-align: center; font-size: 11px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; }
+.wowunit .skull { position: absolute; left: 171px; top: 58px; width: 16px; height: 16px; background-size: 100% 100%; }
+.wowunit.player.hurt .portrait { box-shadow: inset 0 0 18px rgba(255, 0, 0, 0.8); }
+.wowunit.target.enraged .portrait { filter: sepia(1) saturate(4) hue-rotate(-30deg); }
+
+.wowmm { position: absolute; right: 0; top: 0; width: 192px; height: 210px; transform-origin: 100% 0; }
+.wowmm .radar { position: absolute; left: 35px; top: 22px; width: 140px; height: 140px; border-radius: 50%; }
+.wowmm .border { position: absolute; left: 9px; top: 0; width: 192px; height: 192px; background-size: 100% 100%; }
+.wowmm .zone { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font-size: 12px; color: var(--wow-gold); text-shadow: 1px 1px 0 #000; }
+.wowmm .info { position: absolute; left: 0; right: 0; top: 168px; text-align: center; font-size: 12px; color: #fff; text-shadow: 1px 1px 0 #000; }

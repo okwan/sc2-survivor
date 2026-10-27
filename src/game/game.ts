@@ -22,8 +22,7 @@ import { MAX_SLOTS } from './entities';
 import { SpatialGrid } from './grid';
 import { damp, hyp } from './math';
 import type { Input } from './input';
-import { bwIcon, frameIcon, spellIcon } from '../bw/ui';
-import { RACE_UI } from '../bw/ui-files';
+import { bwIcon, dashIcon, spellIcon } from '../bw/ui';
 import { castSpell, updateMinions, updatePersistent } from './spells';
 
 const WORLD = 4000; // the scattered props repeat every 2*WORLD when there is no real map
@@ -1072,7 +1071,7 @@ export class Game {
           [6, 'Napalm burn', bwIcon('napalm', '🔥')],
           [SLOT_NUKE, 'Tactical Nuke', bwIcon('nuke', '☢️')],
           [SLOT_FEEDBACK, 'Feedback', bwIcon('feedback', '💫')],
-          [SLOT_DASH, this.race.dashName, frameIcon(RACE_UI[this.race.id]?.dash, '💨')],
+          [SLOT_DASH, this.race.dashName, dashIcon(this.race.id)],
           [SLOT_RACIAL, 'Orbital Strike', '🛰️'],
         ].map(([slot, name, icon]) => ({ name: name as string, icon: icon as string, dmg: this.extraDmg[slot as number] ?? 0 })),
       ].sort((a, b) => b.dmg - a.dmg),
