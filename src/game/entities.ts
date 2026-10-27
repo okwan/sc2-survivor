@@ -1,4 +1,4 @@
-import type { Sprite } from 'pixi.js';
+import type { Sprite, Texture } from 'pixi.js';
 import type { BwSprite } from '../bw/assets';
 import type { BossDef, EnemyDef } from '../data/enemies';
 import type { SpellDef, SpellStats } from '../data/spells';
@@ -66,6 +66,7 @@ export interface Projectile {
   hits: number[]; // uids already hit
   splash: boolean;
   tags: string[];
+  anim?: Texture[]; // spinning/animated Brood War bullet
 }
 
 export interface EnemyShot {
@@ -121,6 +122,8 @@ export interface Cache {
 
 export interface Fx {
   sprite: Sprite;
+  /** Brood War animation frames played over the effect's life; such effects use normal blending. */
+  frames?: Texture[];
   life: number;
   max: number;
   s0: number;

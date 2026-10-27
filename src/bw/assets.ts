@@ -41,6 +41,71 @@ export const BW_UNITS: Record<string, string> = {
   'prop:geyser': 'unit/neutral/geyser.grp',
 };
 
+/** Effects (all animation frames are kept). */
+export const BW_FX: Record<string, string> = {
+  'fx:tbangs': 'unit/thingy/tbangs.grp',
+  'fx:tbangl': 'unit/thingy/tbangl.grp',
+  'fx:zdeath': 'unit/thingy/zairdths.grp',
+  'fx:zdeathl': 'unit/thingy/zairdthl.grp',
+  'fx:pdeath': 'unit/thingy/hkexplod.grp',
+  'fx:blood1': 'unit/thingy/bblood01.grp',
+  'fx:blood2': 'unit/thingy/bblood02.grp',
+  'fx:blood3': 'unit/thingy/bblood03.grp',
+  'fx:blood4': 'unit/thingy/bblood04.grp',
+  'fx:tspark': 'unit/bullet/tspark.grp',
+  'fx:zspark': 'unit/bullet/zspark.grp',
+  'fx:pspark': 'unit/bullet/pspark.grp',
+  'fx:gemini': 'unit/bullet/gemini.grp',
+  'fx:spores': 'unit/bullet/spores.grp',
+  'fx:dragbull': 'unit/bullet/dragbull.grp',
+  'fx:psistorm': 'unit/thingy/psistorm.grp',
+  'fx:nuke': 'unit/thingy/mushroom.grp',
+  'fx:emp': 'unit/thingy/emp.grp',
+};
+
+/** Tileset doodads scattered over each zone: [sprite, shadow]. */
+export const BW_DOODADS: Record<string, [string, string | null][]> = {
+  marsara: [
+    ['unit/thingy/tileset/badlands/hdrock01.grp', 'unit/thingy/tileset/badlands/hdrock1s.grp'], ['unit/thingy/tileset/badlands/hdrock02.grp', 'unit/thingy/tileset/badlands/hdrock2s.grp'],
+    ['unit/thingy/tileset/badlands/hdrock03.grp', 'unit/thingy/tileset/badlands/hdrock3s.grp'], ['unit/thingy/tileset/badlands/hdrock04.grp', 'unit/thingy/tileset/badlands/hdrock4s.grp'],
+    ['unit/thingy/tileset/badlands/hdrock05.grp', null], ['unit/thingy/tileset/badlands/hdrock06.grp', null], ['unit/thingy/tileset/badlands/hdrock07.grp', null], ['unit/thingy/tileset/badlands/hdrock08.grp', null],
+    ['unit/thingy/tileset/badlands/hdtree01.grp', 'unit/thingy/tileset/badlands/ldtree1s.grp'], ['unit/thingy/tileset/badlands/hdtree02.grp', 'unit/thingy/tileset/badlands/ldtree2s.grp'],
+    ['unit/thingy/tileset/badlands/hdtree03.grp', 'unit/thingy/tileset/badlands/ldtree3s.grp'], ['unit/thingy/tileset/badlands/hdtree04.grp', 'unit/thingy/tileset/badlands/ldtree4s.grp'],
+    ['unit/thingy/tileset/badlands/hgtree01.grp', null], ['unit/thingy/tileset/badlands/hdvent01.grp', null],
+  ],
+  char: [
+    ['unit/thingy/tileset/ashworld/rock01.grp', 'unit/thingy/tileset/ashworld/rock1sha.grp'], ['unit/thingy/tileset/ashworld/rock02.grp', 'unit/thingy/tileset/ashworld/rock2sha.grp'],
+    ['unit/thingy/tileset/ashworld/rock03.grp', 'unit/thingy/tileset/ashworld/rock3sha.grp'], ['unit/thingy/tileset/ashworld/rock04.grp', 'unit/thingy/tileset/ashworld/rock4sha.grp'],
+    ['unit/thingy/tileset/ashworld/rock05.grp', 'unit/thingy/tileset/ashworld/rock5sha.grp'], ['unit/thingy/tileset/ashworld/lalroc01.grp', null], ['unit/thingy/tileset/ashworld/lalroc02.grp', null],
+    ['unit/thingy/tileset/ashworld/hasroc01.grp', null], ['unit/thingy/tileset/ashworld/hasroc02.grp', null], ['unit/thingy/tileset/ashworld/hasroc03.grp', null],
+    ['unit/thingy/tileset/ashworld/hasroc04.grp', null], ['unit/thingy/tileset/ashworld/hasroc05.grp', null], ['unit/thingy/tileset/ashworld/hasroc06.grp', null],
+    ['unit/thingy/tileset/ashworld/rorock01.grp', null], ['unit/thingy/tileset/ashworld/rorock02.grp', null], ['unit/thingy/tileset/ashworld/rorock03.grp', null],
+  ],
+  aiur: [
+    ['unit/thingy/tileset/jungle/hdrock01.grp', 'unit/thingy/tileset/jungle/hdrock1s.grp'], ['unit/thingy/tileset/jungle/hdrock02.grp', 'unit/thingy/tileset/jungle/hdrock2s.grp'],
+    ['unit/thingy/tileset/jungle/jubush01.grp', 'unit/thingy/tileset/jungle/jubush1s.grp'], ['unit/thingy/tileset/jungle/jubush03.grp', 'unit/thingy/tileset/jungle/jubush3s.grp'],
+    ['unit/thingy/tileset/jungle/jubush05.grp', 'unit/thingy/tileset/jungle/jubush5s.grp'], ['unit/thingy/tileset/jungle/ldtree01.grp', 'unit/thingy/tileset/jungle/ldtree1s.grp'],
+    ['unit/thingy/tileset/jungle/ldtree02.grp', 'unit/thingy/tileset/jungle/ldtree2s.grp'], ['unit/thingy/tileset/jungle/ldtree04.grp', 'unit/thingy/tileset/jungle/ldtree4s.grp'],
+    ['unit/thingy/tileset/jungle/tree02.grp', 'unit/thingy/tileset/jungle/tree2sha.grp'], ['unit/thingy/tileset/jungle/tree03.grp', 'unit/thingy/tileset/jungle/tree3sha.grp'],
+    ['unit/thingy/tileset/jungle/tree04.grp', 'unit/thingy/tileset/jungle/tree4sha.grp'], ['unit/thingy/tileset/jungle/dd025.grp', null], ['unit/thingy/tileset/jungle/dd026.grp', null],
+    ['unit/thingy/tileset/jungle/dd029.grp', null], ['unit/thingy/tileset/jungle/dd075.grp', null], ['unit/thingy/tileset/jungle/dd077.grp', null], ['unit/thingy/tileset/jungle/dd080.grp', null],
+    ['unit/thingy/tileset/jungle/dd091.grp', null], ['unit/thingy/tileset/jungle/dd204.grp', null], ['unit/thingy/tileset/jungle/dd209.grp', null],
+  ],
+  korhal: [
+    ['unit/thingy/tileset/platform/dish01.grp', 'unit/thingy/tileset/platform/dish1sha.grp'], ['unit/thingy/tileset/platform/dish02.grp', 'unit/thingy/tileset/platform/dish2sha.grp'],
+    ['unit/thingy/tileset/platform/dish03.grp', 'unit/thingy/tileset/platform/dish3sha.grp'], ['unit/thingy/tileset/platform/glob01.grp', 'unit/thingy/tileset/platform/glob1sha.grp'],
+    ['unit/thingy/tileset/platform/glob02.grp', 'unit/thingy/tileset/platform/glob2sha.grp'], ['unit/thingy/tileset/platform/glob03.grp', 'unit/thingy/tileset/platform/glob3sha.grp'],
+    ['unit/thingy/tileset/platform/towr01.grp', null], ['unit/thingy/tileset/platform/towr02.grp', null], ['unit/thingy/tileset/platform/tree01.grp', null], ['unit/thingy/tileset/platform/tree02.grp', null],
+    ['unit/thingy/tileset/platform/lbsign01.grp', null], ['unit/thingy/tileset/platform/lbsign03.grp', null], ['unit/thingy/tileset/platform/lbsign05.grp', null], ['unit/thingy/tileset/platform/spthin01.grp', null],
+  ],
+  ulnar: [
+    ['unit/thingy/tileset/twilight/ldarch.grp', null], ['unit/thingy/tileset/twilight/lddrill.grp', null], ['unit/thingy/tileset/twilight/ldxel01.grp', null], ['unit/thingy/tileset/twilight/ldxel02.grp', null],
+    ['unit/thingy/tileset/twilight/ldxel03.grp', null], ['unit/thingy/tileset/twilight/ldxel05.grp', null], ['unit/thingy/tileset/twilight/ldxel06.grp', null], ['unit/thingy/tileset/twilight/ldxeltur.grp', null],
+    ['unit/thingy/tileset/twilight/jtree01.grp', null], ['unit/thingy/tileset/twilight/jtree02.grp', null], ['unit/thingy/tileset/twilight/jtree03.grp', null], ['unit/thingy/tileset/twilight/jtree04.grp', null],
+    ['unit/thingy/tileset/twilight/jtree05.grp', null], ['unit/thingy/tileset/twilight/rstatue.grp', null],
+  ],
+};
+
 const PALETTES = ['tileset/platform.wpe', 'tileset/badlands.wpe', 'tileset/jungle.wpe', 'tileset/install.wpe', 'tileset/ashworld.wpe', 'tileset/desert.wpe', 'tileset/ice.wpe', 'tileset/twilight.wpe'];
 
 // Player colour remaps for palette indices 8-15 (from tunit.pcx): red, blue, ..., purple
@@ -70,6 +135,14 @@ export function bwSprite(key: string): BwSprite | undefined {
   return registry.get(key);
 }
 
+/** Doodads available for a zone, with their shadow sprites. */
+export function bwDoodads(zoneId: string): { img: BwSprite; shadow: BwSprite | null }[] {
+  return (BW_DOODADS[zoneId] ?? []).flatMap(([a, b]) => {
+    const img = registry.get(a);
+    return img ? [{ img, shadow: (b && registry.get(b)) || null }] : [];
+  });
+}
+
 /** Points a sprite at the facing frame for an angle (0 = east, radians). BW mirrors the west half. */
 export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number) {
   let d = Math.round(((angle + Math.PI / 2) / (Math.PI * 2)) * 32);
@@ -86,7 +159,8 @@ export function orientBw(spr: Sprite, bw: BwSprite, angle: number, scale: number
 }
 
 // ------------------------------------------------------------ file intake
-const ALL_FILES = () => [...new Set(Object.values(BW_UNITS)), ...PALETTES, ...BW_TERRAIN_FILES];
+const DOODAD_FILES = () => Object.values(BW_DOODADS).flatMap((l) => l.flatMap(([a, b]) => (b ? [a, b] : [a])));
+const ALL_FILES = () => [...new Set([...Object.values(BW_UNITS), ...Object.values(BW_FX), ...DOODAD_FILES()]), ...PALETTES, ...BW_TERRAIN_FILES];
 
 function wanted(path: string): string | null {
   for (const p of ALL_FILES()) if (path.endsWith(p)) return p;
@@ -210,13 +284,35 @@ export function buildSprites(files: Map<string, Uint8Array>, source: BwSource = 
       missing.push(path);
     }
   }
-  status = { loaded: registry.size > 0, count: registry.size, missing: [...new Set(missing)], source };
+  const unitCount = registry.size;
+  const plain = pals.red;
+  for (const [key, path] of Object.entries(BW_FX)) {
+    const buf = files.get(path);
+    if (!buf) continue;
+    try {
+      registry.set(key, buildOne(buf, plain, 32));
+    } catch {
+      /* skip */
+    }
+  }
+  for (const [path, shadow] of Object.values(BW_DOODADS).flat()) {
+    for (const [p, sh] of [[path, false], [shadow, true]] as const) {
+      const buf = p && files.get(p);
+      if (!buf || registry.has(p)) continue;
+      try {
+        registry.set(p, buildOne(buf, plain, 1, sh));
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  status = { loaded: unitCount > 0, count: unitCount, missing: [...new Set(missing)], source };
   return status;
 }
 
-function buildOne(buf: Uint8Array, pal: Uint8Array): BwSprite {
+function buildOne(buf: Uint8Array, pal: Uint8Array, maxFrames = 17, shadow = false): BwSprite {
   const g = parseGrp(buf);
-  const n = Math.min(17, g.frames);
+  const n = Math.min(maxFrames, g.frames);
   const W = g.width;
   const H = g.height;
   const cv = document.createElement('canvas');
@@ -230,6 +326,7 @@ function buildOne(buf: Uint8Array, pal: Uint8Array): BwSprite {
     const h0 = 6 + i * 8;
     sizeSum += Math.max(g.view.getUint8(h0 + 2), g.view.getUint8(h0 + 3));
   }
+  if (shadow) for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3]) img.data.set([0, 0, 0, 110], i);
   ctx.putImageData(img, 0, 0);
   const sheet = Texture.from(cv);
   sheet.source.scaleMode = 'nearest';

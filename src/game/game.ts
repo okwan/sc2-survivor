@@ -6,7 +6,7 @@ import { SPELL_BY_ID, spellStatsAtRank } from '../data/spells';
 import { addMods, baseStats, type Rarity, type SpellMod, type StatKey, type StatMods, type Stats, type RaceId } from '../data/types';
 import { gearStats, perkLevel, perkStats, save, talentBonuses } from '../meta/save';
 import { enemyTexture, fx, groundTexture, heroTexture, minionTexture, pickupTexture, propTexture } from '../render/textures';
-import { bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
+import { bwDoodads, bwSprite, bwTerrain, orientBw, type BwSprite } from '../bw/assets';
 import { sfx } from './audio';
 import { rollRarity } from './cards';
 import type { BossState, Cache, ChainFx, Enemy, EnemyShot, Field, Fx, Gem, Lair, Lob, Mine, Minion, Pickup, PickupKind, Projectile, SpellInstance, Telegraph } from './entities';
@@ -94,6 +94,7 @@ export class Game {
     shadows: new Container(),
     units: new Container(),
     top: new Container(),
+    bwfx: new Container(), // Brood War animated effects (normal blending)
     fx: new Container(),
     text: new Container(),
   };
@@ -230,6 +231,20 @@ export class Game {
       if (Math.hypot(s.x, s.y) < 260) continue;
       this.layers.ground.addChild(s);
       this.props.push(s);
+    }
+    const dds = bwGround ? bwDoodads(z.id) : [];
+    for (let i = 0; dds.length && i < 320; i++) {
+      const d = dds[Math.floor(Math.random() * dds.length)];
+      const x = (Math.random() * 2 - 1) * WORLD;
+      const y = (Math.random() * 2 - 1) * WORLD;
+      if (Math.hypot(x, y) < 260) continue;
+      for (const b of d.shadow ? [d.shadow, d.img] : [d.img]) {
+        const s = new Sprite(b.frames[0]);
+        s.anchor.set(0.5);
+        s.position.set(x, y);
+        this.layers.ground.addChild(s);
+        this.props.push(s);
+      }
     }
     const kinds = ['rock', 'rock', 'crystal', 'bones', 'pylon'] as const;
     for (let i = 0; !bwProps.length && i < 520; i++) {
@@ -628,7 +643,7 @@ export class Game {
     if (Math.random() < 0.0025) this.dropPickup('medkit', e.x, e.y, 0);
     if (Math.random() < 0.0012) this.dropPickup('magnet', e.x, e.y, 0);
     const big = e.elite || !!e.boss;
-    this.addFx(fx.soft(), e.x, e.y, e.def.color, 0.3, big ? 2.4 : 0.8, big ? 0.5 : 0.25, 0.8);
+    if (!this.bwDeath(e, big)) this.addFx(fx.soft(), e.x, e.y, e.def.color, 0.3, big ? 2.4 : 0.8, big ? 0.5 : 0.25, 0.8);
     if (e.def.behavior === 'exploder') this.banelingBlast(e);
     if (this.flags.has('endlessSwarm') && Math.random() < 0.1 && this.minions.length < 60) {
       const brood = this.spells.find((s) => s.def.id === 'brood');
@@ -812,12 +827,30 @@ export class Game {
   }
 
   spawnProjectile(x: number, y: number, a: number, speed: number, damage: number, radius: number, pierce: number, life: number, slot: number, color: number, tags: readonly string[]) {
-    const spr = this.sprite(this.layers.fx, fx.bolt());
-    spr.tint = color;
-    spr.rotation = a;
-    spr.scale.set(0.6 + radius * 0.06, 0.5 + radius * 0.08);
+    const bw = this.bulletBw;
+    const spr = this.sprite(bw ? this.layers.bwfx : this.layers.fx, bw ? bw.frames[0] : fx.bolt());
+    let anim: Texture[] | undefined;
+    if (bw) {
+      spr.tint = 0xffffff;
+      const s = 0.7 + radius * 0.04;
+      if (this.race.id === 'terran') orientBw(spr, bw, a, s);
+      else {
+        spr.rotation = 0;
+        spr.scale.set(s);
+        anim = bw.frames;
+      }
+    } else {
+      spr.tint = color;
+      spr.rotation = a;
+      spr.scale.set(0.6 + radius * 0.06, 0.5 + radius * 0.08);
+    }
     spr.position.set(x, y);
-    this.projectiles.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage, radius, pierce, life, slot, sprite: spr, hits: [], splash: true, tags: tags as string[] });
+    this.projectiles.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, damage, radius, pierce, life, slot, sprite: spr, hits: [], splash: true, tags: tags as string[], anim });
+  }
+
+  /** The hero race's Brood War bullet: Terran missiles, Zerg spores, Protoss plasma. */
+  private get bulletBw(): BwSprite | null {
+    return bwSprite(this.race.id === 'terran' ? 'fx:gemini' : this.race.id === 'zerg' ? 'fx:spores' : 'fx:dragbull') ?? null;
   }
 
   addLob(x0: number, y0: number, x1: number, y1: number, dur: number, damage: number, r: number, slot: number, color: number, tags: readonly string[]) {
@@ -844,6 +877,31 @@ export class Game {
 
   addChain(pts: number[], color: number) {
     this.chains.push({ pts, life: 0.18, color });
+  }
+
+  /** Plays a Brood War effect animation once. Returns false when the art isn't loaded. */
+  addAnim(key: string, x: number, y: number, scale = 1, life = 0.5, layer: Container = this.layers.bwfx): boolean {
+    const b = bwSprite(key);
+    if (!b) return false;
+    const spr = this.sprite(layer, b.frames[0]);
+    spr.tint = 0xffffff;
+    spr.position.set(x, y);
+    spr.rotation = 0;
+    spr.scale.set(scale);
+    spr.alpha = 1;
+    this.fxs.push({ sprite: spr, frames: b.frames, life, max: life, s0: -1, s1: -1, a0: 1, vx: 0, vy: 0, spin: 0 });
+    return true;
+  }
+
+  private bwDeath(e: Enemy, big: boolean): boolean {
+    const sh = e.def.shape;
+    const s = Math.max(0.8, (e.radius * (e.boss ? 1.2 : 1)) / 14);
+    if (sh === 'zealot' || sh === 'stalker' || sh === 'archon' || sh === 'hybrid') return this.addAnim('fx:pdeath', e.x, e.y, s * 0.7, 0.55);
+    if (sh === 'marine' || sh === 'firebat' || sh === 'tank') return this.addAnim(big ? 'fx:tbangl' : 'fx:tbangs', e.x, e.y, s * 0.6, 0.6);
+    if (!this.addAnim(big ? 'fx:zdeathl' : 'fx:zdeath', e.x, e.y, s * 0.55, 0.45)) return false;
+    // blood splat left on the ground for a while
+    if (this.fxs.length < 600) this.addAnim(`fx:blood${1 + Math.floor(Math.random() * 4)}`, e.x, e.y, s * 0.8, 6, this.layers.ground);
+    return true;
   }
 
   addFx(tex: Texture, x: number, y: number, color: number, s0: number, s1: number, life: number, a0: number, rot = 0, spin = 0, drift = 0): Fx {
@@ -1450,7 +1508,7 @@ export class Game {
           pr.hits.push(e.uid);
           const sp = Math.hypot(pr.vx, pr.vy) || 1;
           this.hit(e, pr.damage, pr.slot, { kx: (pr.vx / sp) * 60, ky: (pr.vy / sp) * 60, tags: pr.tags, splash: pr.splash });
-          this.addFx(fx.spark(), pr.x, pr.y, pr.sprite.tint as number, 0.6, 1.4, 0.12, 0.9);
+          if (!this.addAnim(this.race.id === 'terran' ? 'fx:tspark' : this.race.id === 'zerg' ? 'fx:zspark' : 'fx:pspark', pr.x, pr.y, 1, 0.25)) this.addFx(fx.spark(), pr.x, pr.y, pr.sprite.tint as number, 0.6, 1.4, 0.12, 0.9);
           if (pr.pierce-- <= 0) {
             dead = true;
             break;
@@ -1458,10 +1516,13 @@ export class Game {
         }
       }
       if (dead) {
-        this.release(this.layers.fx, pr.sprite);
+        this.release((pr.sprite.parent as Container | null) ?? this.layers.fx, pr.sprite);
         this.projectiles[i] = this.projectiles[this.projectiles.length - 1];
         this.projectiles.pop();
-      } else pr.sprite.position.set(pr.x, pr.y);
+      } else {
+        pr.sprite.position.set(pr.x, pr.y);
+        if (pr.anim) pr.sprite.texture = pr.anim[Math.floor(this.time * 20) % pr.anim.length];
+      }
     }
 
     const p = this.player;
@@ -1766,13 +1827,18 @@ export class Game {
       const f = this.fxs[i];
       f.life -= dt;
       const k = 1 - Math.max(0, f.life) / f.max;
+      if (f.frames) {
+        // animations play through once; long-lived ones (decals) hold the last frame and fade at the end
+        const fr = Math.min(f.frames.length - 1, Math.floor(Math.min(1, k * (f.max > 2 ? f.max / 0.6 : 1)) * f.frames.length));
+        f.sprite.texture = f.frames[fr];
+        f.sprite.alpha = f.max > 2 ? Math.min(1, f.life / 1.5) * 0.85 : 1;
+      } else f.sprite.alpha = f.a0 * (1 - k * k);
       if (f.s0 >= 0) f.sprite.scale.set(f.s0 + (f.s1 - f.s0) * easeOut(k));
-      f.sprite.alpha = f.a0 * (1 - k * k);
       f.sprite.rotation += f.spin * dt;
       f.sprite.x += f.vx * dt;
       f.sprite.y += f.vy * dt;
       if (f.life <= 0) {
-        this.release(this.layers.fx, f.sprite);
+        this.release((f.sprite.parent as Container | null) ?? this.layers.fx, f.sprite);
         this.fxs[i] = this.fxs[this.fxs.length - 1];
         this.fxs.pop();
       }

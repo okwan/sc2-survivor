@@ -171,7 +171,7 @@ spriteSheet('fx', idx.fx.map((p) => p.replace(/\\/g, '/')), 8, wpe('badlands'), 
 
 // ---- UI
 if (want('ui')) {
-  for (const p of ['game/tconsole.pcx', 'game/pconsole.pcx', 'game/zconsole.pcx', 'glue/title/title.pcx', 'glue/palmm/backgnd.pcx']) {
+  for (const p of ['game/tconsole.pcx', 'game/pconsole.pcx', 'game/zconsole.pcx', 'glue/palmm/backgnd.pcx']) {
     if (!has(p)) continue;
     const img = decodePcx(f(p), 0);
     const sh = new Sheet(img.width, img.height);
@@ -185,19 +185,29 @@ if (want('ui')) {
     const cols = 20;
     const cw = g.width + 4;
     const ch = g.height + 12;
-    const n = Math.min(g.frames, p.includes('wirefram') ? 140 : 400);
-    const sh = new Sheet(cols * cw, Math.ceil(n / cols) * ch);
-    for (let i = 0; i < n; i++) {
-      const { px } = grpFrame(p, i, pal);
-      sh.label(i, (i % cols) * cw, Math.floor(i / cols) * ch);
-      sh.blit(px, g.width, g.height, (i % cols) * cw, Math.floor(i / cols) * ch + 11);
-    }
+    const total = Math.min(g.frames, p.includes('wirefram') ? 140 : 400);
     console.log(`preview: ${p} ${g.frames} frames ${g.width}x${g.height}`);
-    sh.emit('ui-' + p.split('/').pop()!.replace('.grp', ''));
+    for (let start = 0; start < total; start += 100) {
+      const n = Math.min(100, total - start);
+      const sh = new Sheet(cols * cw, Math.ceil(n / cols) * ch);
+      for (let k = 0; k < n; k++) {
+        const i = start + k;
+        const { px } = grpFrame(p, i, pal);
+        sh.label(i, (k % cols) * cw, Math.floor(k / cols) * ch);
+        sh.blit(px, g.width, g.height, (k % cols) * cw, Math.floor(k / cols) * ch + 11);
+      }
+      sh.emit('ui-' + p.split('/').pop()!.replace('.grp', '') + (total > 100 ? `-${start}` : ''));
+    }
   }
   for (const p of ['font/font10.fnt', 'font/font14.fnt', 'font/font16.fnt', 'font/font16x.fnt', 'font/font50.fnt']) {
     if (!has(p)) continue;
-    const fnt = decodeFnt(f(p));
+    let fnt;
+    try {
+      fnt = decodeFnt(f(p));
+    } catch (e) {
+      console.log(`preview: ${p} failed: ${(e as Error).message} head ${f(p).subarray(0, 48).toString('hex')}`);
+      continue;
+    }
     const text = 'Koprulu Survivors 0123456789 Minerals Level Up! ABCXYZ';
     const sh = new Sheet(fnt.maxW * text.length, fnt.maxH + 4);
     let x = 0;
