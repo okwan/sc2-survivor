@@ -32,6 +32,11 @@ for (const f of manifest.files.filter((p) => p.endsWith('.grp'))) {
   let opaque = 0;
   for (let i = 3; i < px.length; i += 4) if (px[i]) opaque++;
   console.log(`check-bw: ${f} ${g.frames} frames ${g.width}x${g.height}, frame ${frame}: ${opaque} px`);
+  if (f.startsWith('dlgs/'))
+    console.log(`check-bw: ${f} boxes ` + Array.from({ length: g.frames }, (_, i) => {
+      const h0 = 6 + i * 8;
+      return `${i}:${g.view.getUint8(h0)},${g.view.getUint8(h0 + 1)} ${g.view.getUint8(h0 + 2)}x${g.view.getUint8(h0 + 3)}`;
+    }).join(' '));
   if (!preview.has(f)) continue;
   for (let y = 0; y < g.height; y++) {
     let row = '';

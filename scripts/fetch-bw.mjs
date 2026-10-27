@@ -23,7 +23,7 @@ const localSource = process.argv[3];
 // the file lists live in src/bw/*.ts as quoted literal paths; keep one source of truth
 const srcDir = new URL('../src/bw/', import.meta.url);
 const assetsSrc = readdirSync(srcDir).filter((n) => n.endsWith('.ts')).map((n) => readFileSync(new URL(n, srcDir), 'utf8')).join('\n');
-const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset|game|glue|font|cursor|sound)\/[\w/]+\.(?:grp|wpe|cv5|vx4|vr4|pcx|fnt|wav))'/g)].map((m) => m[1]))];
+const wanted = [...new Set([...assetsSrc.matchAll(/'((?:unit|tileset|game|glue|font|cursor|sound|dlgs)\/[\w/]+\.(?:grp|wpe|cv5|vx4|vr4|pcx|fnt|wav))'/g)].map((m) => m[1]))];
 
 function findMpqs(dir) {
   const out = {};
